@@ -1,0 +1,8 @@
+{
+  "name": "Copy of PLC ERP HelpDesk- USED FOR SUPABASE",
+  "description": "A modern, AI-powered ERP ticketing system with role-based access, comprehensive bug tracking, and automated ticket analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

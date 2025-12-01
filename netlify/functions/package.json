@@ -1,0 +1,9 @@
+{
+    "name": "functions",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@netlify/functions": "^2.8.2"
+    }
+}
