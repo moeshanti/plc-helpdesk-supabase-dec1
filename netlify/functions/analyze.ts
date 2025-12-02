@@ -15,7 +15,7 @@ const handler: Handler = async (event) => {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         let promptText = `You are a Senior 1C:Enterprise ERP Expert and Developer. 
     Analyze the provided screenshot(s) which are attachments in a 1C ERP Helpdesk Ticket.

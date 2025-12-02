@@ -5,7 +5,7 @@ export interface ImagePart {
   }
 }
 
-export const analyzeTicketAttachment = async (
+export const analyzeTicketImages = async (
   images: ImagePart[],
   context: string,
   isCreationMode: boolean = false
@@ -33,6 +33,48 @@ export const analyzeTicketAttachment = async (
   } catch (error: any) {
     console.error("AI Analysis Error:", error);
     return `Failed to analyze the image(s). ${error.message || 'Please try again later.'}`;
+  }
+};
+
+export const analyzeTicketVideo = async (
+  videoBase64: string,
+  mimeType: string,
+  erpName?: string,
+  module?: string
+): Promise<string> => {
+  try {
+    const response = await fetch('/.netlify/functions/analyze-video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        videoBase64,
+        mimeType,
+        erpName,
+        module
+      }),
+    });
+
+    const responseText = await response.text();
+    let data;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      // If parsing fails, it's likely an HTML error page (e.g. 413 Payload Too Large, 500, 404)
+      console.error("Failed to parse video analysis response:", responseText);
+      throw new Error(`Server returned an error (likely file too large or timeout): ${response.status} ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `Server error: ${response.status}`);
+    }
+
+    return data.text;
+  } catch (error: any) {
+    console.error("AI Video Analysis Error:", error);
+    return `Failed to analyze the video. ${error.message || 'Please try again later.'}`;
   }
 };
 

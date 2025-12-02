@@ -55,7 +55,8 @@ import {
     Maximize2,
     Menu,
     Filter,
-    Kanban
+    Kanban,
+    List
 } from 'lucide-react';
 import {
     BarChart,
@@ -75,11 +76,16 @@ import {
     Label
 } from 'recharts';
 import { User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation } from './types';
-import { analyzeTicketAttachment, ImagePart } from './services/geminiService';
+import { ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import { supabase } from './services/supabaseClient';
 import { TicketKanbanView } from './components/TicketKanbanView';
 import { ReportsView } from './components/ReportsView';
+import { SmartInputTabs, SmartInputTab } from './components/SmartInputTabs';
+import { ReactMediaRecorder } from "react-media-recorder";
+import { analyzeTicketImages, analyzeTicketVideo } from './services/geminiService';
+
+const ACTIVE_ERP_SYSTEM = "1C:Enterprise";
 
 // --- MOCK DATA FOR CHARTS ---
 const MOCK_TREND_DATA = [
@@ -359,8 +365,29 @@ export default function App() {
                 });
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, (payload) => {
-                const updatedTicket = StorageService.mapDbTicketToLocal(payload.new);
-                setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+                const newTicketData = payload.new;
+                setTickets(prev => prev.map(t => {
+                    if (t.id !== newTicketData.id) return t;
+
+                    // Safety check: ensure critical fields exist before mapping
+                    // If title or status is missing, it's likely a partial update (e.g. due to REPLICA IDENTITY settings)
+                    // or a corrupted payload. We ignore it to prevent overwriting local state with undefined values.
+                    if (!newTicketData.title || !newTicketData.status) {
+                        console.warn('Received partial or invalid update from Realtime, ignoring:', newTicketData);
+                        return t;
+                    }
+
+                    const updatedTicket = StorageService.mapDbTicketToLocal(newTicketData);
+
+                    // FIX: If attachments are large (Base64), Postgres might TOAST them and omit them from the Realtime payload.
+                    // They can appear as null or undefined.
+                    // If we have local attachments and the payload sends null/undefined, preserve our local copy.
+                    if ((newTicketData.attachments === null || newTicketData.attachments === undefined) && t.attachments.length > 0) {
+                        updatedTicket.attachments = t.attachments;
+                    }
+
+                    return updatedTicket;
+                }));
             })
             .subscribe();
 
@@ -1370,23 +1397,63 @@ export default function App() {
                         {ticket.attachments && ticket.attachments.length > 0 && (
                             <div className="mt-4 flex flex-wrap gap-2">
                                 {ticket.attachments.map((att, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => setPreviewImage(att.url)}
-                                        className="group relative block overflow-hidden rounded-lg border border-gray-200 dark:border-slate-700 w-24 h-24 transition-transform hover:scale-105"
-                                    >
-                                        {att.type === 'image' ? (
-                                            <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full bg-gray-50 dark:bg-slate-700 flex items-center justify-center">
-                                                <FileText className="h-8 w-8 text-gray-400" />
+                                    <div key={idx} className="relative group">
+                                        {att.type === 'video' ? (
+                                            <div className="w-64 h-48 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 bg-black">
+                                                <video
+                                                    src={att.url}
+                                                    controls
+                                                    className="w-full h-full object-contain"
+                                                />
                                             </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setPreviewImage(att.url)}
+                                                className="group relative block overflow-hidden rounded-lg border border-gray-200 dark:border-slate-700 w-24 h-24 transition-transform hover:scale-105"
+                                            >
+                                                {att.type === 'image' ? (
+                                                    <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full bg-gray-50 dark:bg-slate-700 flex items-center justify-center">
+                                                        <FileText className="h-8 w-8 text-gray-400" />
+                                                    </div>
+                                                )}
+                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                    <Maximize2 className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" />
+                                                </div>
+                                            </button>
                                         )}
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                            <Maximize2 className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" />
-                                        </div>
-                                    </button>
+                                    </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* AI Analysis & Steps Section */}
+                        {(ticket.aiAnalysis || ticket.stepsToReproduce) && (
+                            <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-700">
+                                {ticket.stepsToReproduce && (
+                                    <div className="mb-4">
+                                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex items-center">
+                                            <List className="w-4 h-4 mr-2 text-brand-600" />
+                                            Steps to Reproduce
+                                        </h3>
+                                        <div className="bg-gray-50 dark:bg-slate-900/50 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono">
+                                            {ticket.stepsToReproduce}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {ticket.aiAnalysis && (
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex items-center">
+                                            <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                                            AI Analysis
+                                        </h3>
+                                        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                            {ticket.aiAnalysis}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1837,6 +1904,8 @@ export default function App() {
         const [priority, setPriority] = useState<TicketPriority>(TicketPriority.MEDIUM);
         const [steps, setSteps] = useState('');
         const [files, setFiles] = useState<File[]>([]);
+        const [videoFile, setVideoFile] = useState<File | null>(null);
+        const [activeTab, setActiveTab] = useState<SmartInputTab>('image');
         const [isAnalyzing, setIsAnalyzing] = useState(false);
         const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
         const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
@@ -1853,43 +1922,103 @@ export default function App() {
         const isStaff = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER;
 
         const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-            if (e.target.files) {
-                setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+            if (e.target.files && e.target.files.length > 0) {
+                if (activeTab === 'image') {
+                    const newFiles = Array.from(e.target.files);
+                    setFiles(prev => [...prev, ...newFiles]);
+                } else if (activeTab === 'upload-video') {
+                    const file = e.target.files[0];
+                    if (file) {
+                        if (file.size > 25 * 1024 * 1024) {
+                            alert("Video file size must be less than 25MB.");
+                            e.target.value = ''; // Reset on error
+                            return;
+                        }
+                        setVideoFile(file);
+                    }
+                }
+                // Reset input value to allow selecting the same file again or new files reliably
+                e.target.value = '';
             }
         };
 
-        const handleAnalyze = async () => {
-            if (files.length === 0) return;
+        const handleAnalyze = async (mediaBlobUrl?: string) => {
             setIsAnalyzing(true);
             try {
-                const attachments: ImagePart[] = await Promise.all(files.filter(f => f.type.startsWith('image')).map(async (file) => {
-                    return new Promise<ImagePart>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64 = (reader.result as string).split(',')[1];
-                            resolve({
-                                inlineData: { data: base64, mimeType: file.type }
-                            });
-                        };
-                        reader.readAsDataURL(file);
+                let result = "";
+
+                if (activeTab === 'image') {
+                    if (files.length === 0) return;
+                    const attachments: ImagePart[] = await Promise.all(files.filter(f => f.type.startsWith('image')).map(async (file) => {
+                        return new Promise<ImagePart>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64 = (reader.result as string).split(',')[1];
+                                resolve({
+                                    inlineData: { data: base64, mimeType: file.type }
+                                });
+                            };
+                            reader.readAsDataURL(file);
+                        });
+                    }));
+
+                    if (attachments.length > 0) {
+                        result = await analyzeTicketImages(attachments, description || "New ticket creation analysis", true);
+                    }
+                } else if (activeTab === 'upload-video' && videoFile) {
+                    const reader = new FileReader();
+                    const base64 = await new Promise<string>((resolve) => {
+                        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                        reader.readAsDataURL(videoFile);
                     });
-                }));
+                    result = await analyzeTicketVideo(base64, videoFile.type, "1C:Enterprise", module);
+                } else if (activeTab === 'record-video' && mediaBlobUrl) {
+                    const blob = await fetch(mediaBlobUrl).then(r => r.blob());
+                    if (blob.size > 4 * 1024 * 1024) {
+                        alert("Recording is too large (>4MB) for AI analysis. Please record a shorter clip (max 5-10 seconds).");
+                        setIsAnalyzing(false);
+                        return;
+                    }
+                    const reader = new FileReader();
+                    const base64 = await new Promise<string>((resolve) => {
+                        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                        reader.readAsDataURL(blob);
+                    });
+                    result = await analyzeTicketVideo(base64, blob.type, "1C:Enterprise", module);
+                }
 
-                if (attachments.length > 0) {
-                    const result = await analyzeTicketAttachment(attachments, description || "New ticket creation analysis", true);
-                    setAiAnalysis(result);
+                if (result) {
+                    // Parse JSON result for video or extract from text for images
+                    let parsedTitle = "";
+                    let parsedSteps = "";
+                    let parsedDescription = result;
 
-                    // Extract Suggested Title
-                    const titleMatch = result.match(/\*\*Suggested Title:\*\*\s*(.*)/);
-                    if (titleMatch && titleMatch[1]) {
-                        setSuggestedTitle(titleMatch[1].trim());
+                    if (activeTab !== 'image') {
+                        try {
+                            const json = JSON.parse(result);
+                            parsedTitle = json.title;
+                            parsedSteps = json.steps;
+                            parsedDescription = json.description;
+                            // Also set module if available? User requested module in JSON but we don't have a setter for it in the UI feedback logic yet, 
+                            // but we can set the form field directly if we want. 
+                            // For now let's stick to the requested state variables.
+                            if (json.module) setModule(json.module);
+                        } catch (e) {
+                            console.error("Failed to parse JSON from video analysis", e);
+                            // Fallback to text parsing if JSON fails
+                        }
+                    } else {
+                        // Existing regex logic for images
+                        const titleMatch = result.match(/\*\*Suggested Title:\*\*\s*(.*)/);
+                        if (titleMatch && titleMatch[1]) parsedTitle = titleMatch[1].trim();
+
+                        const stepsMatch = result.match(/\*\*Steps to Reproduce:\*\*\s*([\s\S]*?)(?=\*\*|$)/);
+                        if (stepsMatch && stepsMatch[1]) parsedSteps = stepsMatch[1].trim();
                     }
 
-                    // Extract Steps
-                    const stepsMatch = result.match(/\*\*Steps to Reproduce:\*\*\s*([\s\S]*?)(?=\*\*|$)/);
-                    if (stepsMatch && stepsMatch[1]) {
-                        setSuggestedSteps(stepsMatch[1].trim());
-                    }
+                    setAiAnalysis(parsedDescription);
+                    if (parsedTitle) setSuggestedTitle(parsedTitle);
+                    if (parsedSteps) setSuggestedSteps(parsedSteps);
                 }
             } catch (e) {
                 console.error(e);
@@ -1925,22 +2054,66 @@ export default function App() {
         const handleSubmit = async () => {
             if (!title || !description) return;
 
-            const attachments: Attachment[] = await Promise.all(files.map(async (file) => {
-                return new Promise<Attachment>((resolve) => {
+            const attachments: Attachment[] = [];
+
+            // Handle Image Files
+            if (activeTab === 'image' && files.length > 0) {
+                const imageAttachments = await Promise.all(files.map(async (file) => {
+                    return new Promise<Attachment>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            resolve({
+                                id: `a${Date.now()}-${Math.random()}`,
+                                name: file.name,
+                                type: 'image',
+                                url: reader.result as string,
+                                base64: reader.result as string,
+                                mimeType: file.type
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }));
+                attachments.push(...imageAttachments);
+            }
+
+            // Handle Uploaded Video
+            if (activeTab === 'upload-video' && videoFile) {
+                const videoAttachment = await new Promise<Attachment>((resolve) => {
                     const reader = new FileReader();
                     reader.onloadend = () => {
                         resolve({
-                            id: `a${Date.now()}-${Math.random()}`,
-                            name: file.name,
-                            type: file.type.startsWith('image') ? 'image' : 'document',
+                            id: `v${Date.now()}-${Math.random()}`,
+                            name: videoFile.name,
+                            type: 'video',
                             url: reader.result as string,
                             base64: reader.result as string,
-                            mimeType: file.type
+                            mimeType: videoFile.type
                         });
                     };
-                    reader.readAsDataURL(file);
+                    reader.readAsDataURL(videoFile);
                 });
-            }));
+                attachments.push(videoAttachment);
+            }
+
+            // Handle Recorded Video
+            if (activeTab === 'record-video' && recordedVideoBlob) {
+                const videoAttachment = await new Promise<Attachment>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        resolve({
+                            id: `r${Date.now()}-${Math.random()}`,
+                            name: `Screen Recording ${new Date().toLocaleString()}.webm`,
+                            type: 'video',
+                            url: reader.result as string,
+                            base64: reader.result as string,
+                            mimeType: 'video/webm'
+                        });
+                    };
+                    reader.readAsDataURL(recordedVideoBlob);
+                });
+                attachments.push(videoAttachment);
+            }
 
             handleCreateTicket({
                 title,
@@ -1949,7 +2122,8 @@ export default function App() {
                 priority,
                 status: isStaff ? status : TicketStatus.OPEN,
                 stepsToReproduce: steps,
-                attachments
+                attachments,
+                aiAnalysis: aiAnalysis // Persist AI Analysis
             });
         };
 
@@ -1975,57 +2149,125 @@ export default function App() {
                             <Sparkles className="w-8 h-8 mr-3 text-yellow-300" /> Smart Assistant
                         </h3>
                         <p className="text-indigo-100 text-lg mb-8 max-w-xl">
-                            Upload a screenshot of your 1C error. Our AI will analyze the problem, suggest a title, and detect steps to reproduce instantly.
+                            Upload a screenshot or video of your 1C error. Our AI will analyze the problem, suggest a title, and detect steps to reproduce instantly.
                         </p>
+
+                        <SmartInputTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
                         <div className="flex flex-col md:flex-row gap-4 items-start">
                             <div className="flex-1 w-full">
-                                <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
-                                ${files.length > 0 ? 'bg-white/10 border-white/40' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
-                            `}>
-                                    {files.length > 0 ? (
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
-                                            {files.map((file, i) => (
-                                                <div key={i} className="relative aspect-video rounded-lg overflow-hidden border border-white/20 group/file">
-                                                    {file.type.startsWith('image') ? (
+                                {activeTab === 'image' && (
+                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
+                                    ${files.length > 0 ? 'bg-white/10 border-white/40' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
+                                `}>
+                                        {files.length > 0 ? (
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                                                {files.map((file, i) => (
+                                                    <div key={i} className="relative aspect-video rounded-lg overflow-hidden border border-white/20 group/file">
                                                         <img src={URL.createObjectURL(file)} alt="prev" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full bg-white/10 flex items-center justify-center"><FileText className="w-8 h-8 text-white/50" /></div>
-                                                    )}
-                                                    <button onClick={(e) => { e.preventDefault(); setFiles(prev => prev.filter((_, idx) => idx !== i)) }} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity">
-                                                        <X className="w-3 h-3" />
-                                                    </button>
+                                                        <button onClick={(e) => { e.preventDefault(); setFiles(prev => prev.filter((_, idx) => idx !== i)) }} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity">
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <div className="flex flex-col items-center justify-center aspect-video rounded-lg border-2 border-dashed border-white/30 text-white/50 text-xs">
+                                                    <Plus className="w-6 h-6 mb-1" /> Add More
                                                 </div>
-                                            ))}
-                                            <div className="flex flex-col items-center justify-center aspect-video rounded-lg border-2 border-dashed border-white/30 text-white/50 text-xs">
-                                                <Plus className="w-6 h-6 mb-1" /> Add More
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <UploadCloud className="h-12 w-12 text-white/70 mb-3" />
-                                            <span className="text-lg font-bold text-white">Drop screenshots here</span>
-                                            <span className="text-sm text-indigo-200 mt-1">or click to browse</span>
-                                        </>
-                                    )}
-                                    <input type="file" multiple onChange={handleFileChange} className="hidden" accept="image/*,.pdf" />
-                                </label>
+                                        ) : (
+                                            <>
+                                                <UploadCloud className="h-12 w-12 text-white/70 mb-3" />
+                                                <span className="text-lg font-bold text-white">Drop screenshots here</span>
+                                                <span className="text-sm text-indigo-200 mt-1">or click to browse</span>
+                                            </>
+                                        )}
+                                        <input type="file" multiple onChange={handleFileChange} className="hidden" accept="image/*" />
+                                    </label>
+                                )}
+
+                                {activeTab === 'upload-video' && (
+                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
+                                    ${videoFile ? 'bg-white/10 border-white/40' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
+                                `}>
+                                        {videoFile ? (
+                                            <div className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden group/file">
+                                                <video src={URL.createObjectURL(videoFile)} className="w-full h-full object-contain" controls />
+                                                <button onClick={(e) => { e.preventDefault(); setVideoFile(null); }} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity z-10">
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="h-12 w-12 bg-white/10 rounded-full flex items-center justify-center mb-3">
+                                                    <Video className="h-6 w-6 text-white" />
+                                                </div>
+                                                <span className="text-lg font-bold text-white">Drop video file here</span>
+                                                <span className="text-sm text-indigo-200 mt-1">Max size: 25MB</span>
+                                            </>
+                                        )}
+                                        <input type="file" onChange={handleFileChange} className="hidden" accept="video/*" />
+                                    </label>
+                                )}
+
+                                {activeTab === 'record-video' && (
+                                    <ReactMediaRecorder
+                                        screen
+                                        render={({ status, startRecording, stopRecording, mediaBlobUrl }) => (
+                                            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-white/20 rounded-2xl bg-white/5">
+                                                {status === 'recording' ? (
+                                                    <div className="text-center">
+                                                        <div className="animate-pulse flex items-center justify-center mb-4">
+                                                            <div className="w-4 h-4 bg-red-500 rounded-full mr-2"></div>
+                                                            <span className="text-red-400 font-bold">Recording...</span>
+                                                        </div>
+                                                        <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-full font-bold transition-colors">
+                                                            Stop Recording
+                                                        </button>
+                                                    </div>
+                                                ) : mediaBlobUrl ? (
+                                                    <div className="w-full max-w-sm">
+                                                        <video src={mediaBlobUrl} controls className="w-full rounded-lg mb-4" />
+                                                        <div className="flex justify-center gap-4">
+                                                            <button onClick={() => { startRecording(); }} className="text-white/70 hover:text-white text-sm underline">Record Again</button>
+                                                            <button
+                                                                onClick={() => handleAnalyze(mediaBlobUrl)}
+                                                                className="bg-white text-indigo-600 px-6 py-2 rounded-full font-bold hover:bg-indigo-50 transition-colors"
+                                                                disabled={isAnalyzing}
+                                                            >
+                                                                {isAnalyzing ? 'Analyzing...' : 'Analyze Recording'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center">
+                                                        <button onClick={startRecording} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold transition-colors flex items-center mx-auto">
+                                                            <div className="w-3 h-3 bg-white rounded-full mr-2"></div> Start Recording
+                                                        </button>
+                                                        <p className="text-white/50 text-sm mt-3">Grant camera/mic permissions</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    />
+                                )}
                             </div>
 
-                            <button
-                                onClick={handleAnalyze}
-                                disabled={isAnalyzing || !files.some(f => f.type.startsWith('image'))}
-                                className={`px-8 py-6 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center transition-all min-w-[200px] w-full md:w-auto
-                                ${isAnalyzing
-                                        ? 'bg-white/20 text-white cursor-wait'
-                                        : !files.some(f => f.type.startsWith('image'))
-                                            ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                                            : 'bg-white text-indigo-600 hover:bg-indigo-50 transform hover:-translate-y-1'
-                                    }
-                             `}
-                            >
-                                {isAnalyzing ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</> : 'Analyze Now'}
-                            </button>
+                            {activeTab !== 'record-video' && (
+                                <button
+                                    onClick={() => handleAnalyze()}
+                                    disabled={isAnalyzing || (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)}
+                                    className={`px-8 py-6 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center transition-all min-w-[200px] w-full md:w-auto
+                                    ${isAnalyzing
+                                            ? 'bg-white/20 text-white cursor-wait'
+                                            : (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)
+                                                ? 'bg-white/10 text-white/40 cursor-not-allowed'
+                                                : 'bg-white text-indigo-600 hover:bg-indigo-50 transform hover:-translate-y-1'
+                                        }
+                                `}
+                                >
+                                    {isAnalyzing ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</> : 'Analyze Now'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
