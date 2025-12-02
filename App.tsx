@@ -54,7 +54,8 @@ import {
     FileSpreadsheet,
     Maximize2,
     Menu,
-    Filter
+    Filter,
+    Kanban
 } from 'lucide-react';
 import {
     BarChart,
@@ -77,6 +78,7 @@ import { User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Att
 import { analyzeTicketAttachment, ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import { supabase } from './services/supabaseClient';
+import { TicketKanbanView } from './components/TicketKanbanView';
 
 // --- MOCK DATA FOR CHARTS ---
 const MOCK_TREND_DATA = [
@@ -323,7 +325,7 @@ export default function App() {
 
     const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'create' | 'detail' | 'settings'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'board' | 'create' | 'detail' | 'settings'>('dashboard');
     const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -2283,6 +2285,7 @@ export default function App() {
                     {[
                         { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
                         { id: 'list', icon: ListOrdered, label: 'All Tickets' },
+                        { id: 'board', icon: Kanban, label: 'Board View' },
                         { id: 'create', icon: Plus, label: 'New Ticket' },
                     ].map((item) => (
                         <button
@@ -2348,6 +2351,7 @@ export default function App() {
                             {currentView === 'create' && 'Create Ticket'}
                             {currentView === 'detail' && 'Ticket Details'}
                             {currentView === 'settings' && 'System Settings'}
+                            {currentView === 'board' && 'Kanban Board'}
                         </h1>
                     </div>
                     <div className="flex items-center space-x-4">
@@ -2367,6 +2371,14 @@ export default function App() {
                 <div className="flex-1 overflow-auto p-4 sm:p-8 custom-scrollbar">
                     {currentView === 'dashboard' && <DashboardView />}
                     {currentView === 'list' && <TicketListView />}
+                    {currentView === 'board' && <TicketKanbanView
+                        tickets={tickets}
+                        onUpdateTicket={handleUpdateTicket}
+                        onTicketClick={(id) => {
+                            setSelectedTicketId(id);
+                            setCurrentView('detail');
+                        }}
+                    />}
                     {currentView === 'create' && <CreateTicketViewWrapper />}
                     {currentView === 'detail' && <TicketDetailView />}
                     {currentView === 'settings' && <SettingsView />}

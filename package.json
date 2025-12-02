@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@hello-pangea/dnd": "^18.0.1",
     "@netlify/functions": "^2.8.2",
     "@supabase/supabase-js": "^2.86.0",
     "lucide-react": "^0.554.0",
