@@ -79,6 +79,7 @@ import { analyzeTicketAttachment, ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import { supabase } from './services/supabaseClient';
 import { TicketKanbanView } from './components/TicketKanbanView';
+import { ReportsView } from './components/ReportsView';
 
 // --- MOCK DATA FOR CHARTS ---
 const MOCK_TREND_DATA = [
@@ -325,13 +326,21 @@ export default function App() {
 
     const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'board' | 'create' | 'detail' | 'settings'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'new' | 'board' | 'reports'>('dashboard');
     const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const [showUserSwitcher, setShowUserSwitcher] = useState(false);
     const [isDark, setIsDark] = useState(false);
+
+    const sidebarItems = [
+        { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { id: 'list', icon: TicketIcon, label: 'All Tickets' },
+        { id: 'board', icon: Kanban, label: 'Board View' },
+        { id: 'reports', icon: FileText, label: 'Reports' },
+        { id: 'create', icon: Plus, label: 'New Ticket' },
+    ];
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -2282,12 +2291,8 @@ export default function App() {
                 </div>
 
                 <nav className="flex-1 px-3 py-4 space-y-2">
-                    {[
-                        { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-                        { id: 'list', icon: ListOrdered, label: 'All Tickets' },
-                        { id: 'board', icon: Kanban, label: 'Board View' },
-                        { id: 'create', icon: Plus, label: 'New Ticket' },
-                    ].map((item) => (
+
+                    {sidebarItems.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => { setCurrentView(item.id as any); setIsMobileMenuOpen(false); }}
@@ -2371,14 +2376,19 @@ export default function App() {
                 <div className="flex-1 overflow-auto p-4 sm:p-8 custom-scrollbar">
                     {currentView === 'dashboard' && <DashboardView />}
                     {currentView === 'list' && <TicketListView />}
-                    {currentView === 'board' && <TicketKanbanView
-                        tickets={tickets}
-                        onUpdateTicket={handleUpdateTicket}
-                        onTicketClick={(id) => {
-                            setSelectedTicketId(id);
-                            setCurrentView('detail');
-                        }}
-                    />}
+                    {currentView === 'board' && (
+                        <TicketKanbanView
+                            tickets={tickets}
+                            onUpdateTicket={handleUpdateTicket}
+                            onTicketClick={(id) => {
+                                setSelectedTicketId(id);
+                                setCurrentView('detail');
+                            }}
+                        />
+                    )}
+                    {currentView === 'reports' && (
+                        <ReportsView tickets={tickets} />
+                    )}
                     {currentView === 'create' && <CreateTicketViewWrapper />}
                     {currentView === 'detail' && <TicketDetailView />}
                     {currentView === 'settings' && <SettingsView />}
