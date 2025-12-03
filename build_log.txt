@@ -1,0 +1,40 @@
+
+> copy-of-plc-erp-helpdesk--used-for-supabase@0.0.0 build
+> vite build
+
+vite v6.4.1 building for production...
+transforming...
+✓ 4 modules transformed.
+✗ Build failed in 40ms
+error during build:
+[vite:esbuild] Transform failed with 2 errors:
+/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/App.tsx:450:100: ERROR: The character ">" is not valid inside a JSX element
+/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/App.tsx:451:20: ERROR: Unexpected "return"
+file: /Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/App.tsx:450:100
+
+The character ">" is not valid inside a JSX element
+448|                  console.log("Supabase URL:", (import.meta as any).env.VITE_SUPABASE_URL);
+449|  
+450|                  const withTimeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> => {
+   |                                                                                                      ^
+451|                      return Promise.race([
+452|                      promise,
+
+Unexpected "return"
+449|  
+450|                  const withTimeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> => {
+451|                      return Promise.race([
+   |                      ^
+452|                      promise,
+453|                      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms))
+
+    at failureErrorWithLog (/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/esbuild/lib/main.js:1467:15)
+    at /Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)

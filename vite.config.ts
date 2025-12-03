@@ -10,8 +10,9 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '/.netlify/functions': {
-          target: 'http://localhost:9999',
+          target: 'https://reliable-madeleine-444f3c.netlify.app',
           changeOrigin: true,
+          secure: false,
         },
       },
     },

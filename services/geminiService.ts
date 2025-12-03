@@ -23,12 +23,20 @@ export const analyzeTicketImages = async (
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Server error: ${response.status}`);
+    const responseText = await response.text();
+    let data;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error("Failed to parse AI analysis response:", responseText);
+      throw new Error(`Server returned an error (likely local env issue): ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || `Server error: ${response.status}`);
+    }
+
     return data.text;
   } catch (error: any) {
     console.error("AI Analysis Error:", error);

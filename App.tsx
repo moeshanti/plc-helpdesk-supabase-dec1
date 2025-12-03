@@ -56,8 +56,12 @@ import {
     Menu,
     Filter,
     Kanban,
-    List
+    List,
+    BarChart3,
+    PieChart as PieChartIcon,
+    Star
 } from 'lucide-react';
+import { withTimeout } from './utils/timeout';
 import {
     BarChart,
     Bar,
@@ -75,13 +79,14 @@ import {
     Sector,
     Label
 } from 'recharts';
-import { User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation } from './types';
+import { User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation, StatusConfig, ModuleConfig } from './types';
 import { ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import { supabase } from './services/supabaseClient';
 import { TicketKanbanView } from './components/TicketKanbanView';
 import { ReportsView } from './components/ReportsView';
 import { SmartInputTabs, SmartInputTab } from './components/SmartInputTabs';
+import { AdminConfigView } from './components/AdminConfigView';
 import { ReactMediaRecorder } from "react-media-recorder";
 import { analyzeTicketImages, analyzeTicketVideo } from './services/geminiService';
 
@@ -132,8 +137,27 @@ const getStatusIcon = (status: TicketStatus) => {
     }
 };
 
-const StatusBadge = ({ status }: { status: TicketStatus }) => {
-    const styles = {
+const StatusBadge = ({ status, config = [] }: { status: string, config?: StatusConfig[] }) => {
+    // Find dynamic config
+    const statusConfig = config.find(s => s.label === status);
+
+    if (statusConfig) {
+        return (
+            <span
+                className="px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap"
+                style={{
+                    backgroundColor: `${statusConfig.colorHex}20`, // 20% opacity for bg
+                    color: statusConfig.colorHex,
+                    borderColor: `${statusConfig.colorHex}40` // 40% opacity for border
+                }}
+            >
+                {status}
+            </span>
+        );
+    }
+
+    // Fallback for legacy/hardcoded statuses
+    const styles: Record<string, string> = {
         [TicketStatus.OPEN]: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
         [TicketStatus.TO_BE_INVESTIGATED]: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
         [TicketStatus.OPEN_BUG]: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800',
@@ -231,6 +255,31 @@ const renderActiveShape = (props: any) => {
 };
 
 const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => {
+    if (stats.total === 0) {
+        return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col items-center justify-center h-80">
+                    <div className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-full mb-4">
+                        <BarChart3 className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">No Data Available</h3>
+                    <p className="text-gray-500 dark:text-gray-400 text-center max-w-xs">
+                        There are no tickets to display. Create a new ticket to see dashboard insights.
+                    </p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col items-center justify-center h-80">
+                    <div className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-full mb-4">
+                        <PieChartIcon className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">No Distribution Data</h3>
+                    <p className="text-gray-500 dark:text-gray-400 text-center max-w-xs">
+                        Module and status distribution will appear here once tickets are created.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
     const onPieEnter = (_: any, index: number) => {
@@ -339,6 +388,10 @@ export default function App() {
 
     const [showUserSwitcher, setShowUserSwitcher] = useState(false);
     const [isDark, setIsDark] = useState(false);
+    const [showAdminConfig, setShowAdminConfig] = useState(false);
+
+    // Master Data State
+    const [masterData, setMasterData] = useState<{ statuses: StatusConfig[], modules: ModuleConfig[] }>({ statuses: [], modules: [] });
 
     const sidebarItems = [
         { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -393,15 +446,26 @@ export default function App() {
 
         const loadData = async () => {
             try {
-                console.log("Fetching tickets and users...");
-                const [loadedTickets, loadedUsers] = await Promise.all([
-                    StorageService.fetchTickets(),
-                    StorageService.fetchUsers()
-                ]);
-                console.log("Data fetched:", { tickets: loadedTickets?.length, users: loadedUsers?.length });
+                console.log("Starting data load...");
+                console.log("Supabase URL:", (import.meta as any).env.VITE_SUPABASE_URL);
+
+                const pTickets = withTimeout(StorageService.fetchTickets(), 15000, 'fetchTickets')
+                    .then(res => { console.log("Tickets fetched"); return res; })
+                    .catch(err => { console.error("Tickets fetch failed:", err); return []; });
+
+                const pUsers = withTimeout(StorageService.fetchUsers(), 15000, 'fetchUsers')
+                    .then(res => { console.log("Users fetched"); return res; })
+                    .catch(err => { console.error("Users fetch failed:", err); return []; });
+
+                const pMaster = withTimeout(StorageService.fetchMasterData(), 15000, 'fetchMasterData')
+                    .then(res => { console.log("Master data fetched"); return res; })
+                    .catch(err => { console.error("Master data fetch failed:", err); return { statuses: [], modules: [] }; });
+
+                const [loadedTickets, loadedUsers, loadedMasterData] = await Promise.all([pTickets, pUsers, pMaster]);
 
                 setTickets(loadedTickets || []);
                 setUsers(loadedUsers || []);
+                setMasterData(loadedMasterData);
 
                 if (!currentUser && loadedUsers && loadedUsers.length > 0) {
                     console.log("Setting initial user:", loadedUsers[0].name);
@@ -1077,7 +1141,10 @@ export default function App() {
                         className="p-2 pl-3 pr-8 rounded-lg bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-brand-500 outline-none cursor-pointer"
                     >
                         <option value="">All Statuses</option>
-                        {Object.values(TicketStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        {masterData.statuses.length > 0
+                            ? masterData.statuses.map(s => <option key={s.id} value={s.label}>{s.label}</option>)
+                            : Object.values(TicketStatus).map(s => <option key={s} value={s}>{s}</option>)
+                        }
                     </select>
 
                     <select
@@ -1095,7 +1162,10 @@ export default function App() {
                         className="p-2 pl-3 pr-8 rounded-lg bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-brand-500 outline-none cursor-pointer"
                     >
                         <option value="">All Modules</option>
-                        {['Finance', 'Sales', 'Inventory', 'Manufacturing', 'HR', 'System'].map(m => <option key={m} value={m}>{m}</option>)}
+                        {masterData.modules.length > 0
+                            ? masterData.modules.map(m => <option key={m.id} value={m.label}>{m.label}</option>)
+                            : ['Finance', 'Sales', 'Inventory', 'Manufacturing', 'HR', 'System'].map(m => <option key={m} value={m}>{m}</option>)
+                        }
                     </select>
 
                     <select
@@ -1142,7 +1212,7 @@ export default function App() {
                                         <td className="p-4 text-sm text-gray-600 dark:text-gray-300">
                                             <span className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md text-xs">{ticket.module}</span>
                                         </td>
-                                        <td className="p-4"><StatusBadge status={ticket.status} /></td>
+                                        <td className="p-4"><StatusBadge status={ticket.status} config={masterData.statuses} /></td>
                                         <td className="p-4"><PriorityBadge priority={ticket.priority} /></td>
                                         <td className="p-4">
                                             {assignee ? (
@@ -1383,7 +1453,7 @@ export default function App() {
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center space-x-3">
                                 <span className="font-mono text-sm font-bold text-gray-400">{ticket.number}</span>
-                                <StatusBadge status={ticket.status} />
+                                <StatusBadge status={ticket.status} config={masterData.statuses} />
                                 <PriorityBadge priority={ticket.priority} />
                             </div>
                             <button onClick={() => setCurrentView('list')} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
@@ -2341,7 +2411,10 @@ export default function App() {
                         <div>
                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Module</label>
                             <select value={module} onChange={e => setModule(e.target.value)} className="w-full p-4 border border-gray-200 dark:border-slate-600 rounded-xl bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 h-[60px]">
-                                {['Finance', 'Sales', 'Inventory', 'Manufacturing', 'HR', 'System'].map(m => <option key={m} value={m}>{m}</option>)}
+                                {masterData.modules.length > 0
+                                    ? masterData.modules.map(m => <option key={m.id} value={m.label}>{m.label}</option>)
+                                    : ['Finance', 'Sales', 'Inventory', 'Manufacturing', 'HR', 'System'].map(m => <option key={m} value={m}>{m}</option>)
+                                }
                             </select>
                         </div>
                     </div>
@@ -2366,7 +2439,10 @@ export default function App() {
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Initial Status</label>
                                 <select value={status} onChange={e => setStatus(e.target.value as TicketStatus)} className="w-full p-3.5 border border-gray-200 dark:border-slate-600 rounded-xl bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                                    {Object.values(TicketStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    {masterData.statuses.length > 0
+                                        ? masterData.statuses.map(s => <option key={s.id} value={s.label}>{s.label}</option>)
+                                        : Object.values(TicketStatus).map(s => <option key={s} value={s}>{s}</option>)
+                                    }
                                 </select>
                             </div>
                         )}
@@ -2416,8 +2492,27 @@ export default function App() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center"><Settings className="mr-2" /> Settings</h2>
 
             <div className="space-y-8">
-                {/* Data Sync */}
-
+                {/* System Configuration (Admins Only) */}
+                {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER) && (
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">System</h3>
+                        <button
+                            onClick={() => setShowAdminConfig(true)}
+                            className="w-full flex items-center justify-between p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors group"
+                        >
+                            <div className="flex items-center">
+                                <div className="p-2 bg-indigo-100 dark:bg-indigo-800 rounded-lg mr-4 text-indigo-600 dark:text-indigo-300">
+                                    <Settings className="h-6 w-6" />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-gray-900 dark:text-white">System Configuration</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Manage Ticket Statuses & Modules</p>
+                                </div>
+                            </div>
+                            <ArrowRight className="h-5 w-5 text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
+                        </button>
+                    </div>
+                )}
 
                 {/* Appearance */}
                 <div>
@@ -2618,19 +2713,8 @@ export default function App() {
                 <div className="flex-1 overflow-auto p-4 sm:p-8 custom-scrollbar">
                     {currentView === 'dashboard' && <DashboardView />}
                     {currentView === 'list' && <TicketListView />}
-                    {currentView === 'board' && (
-                        <TicketKanbanView
-                            tickets={tickets}
-                            onUpdateTicket={handleUpdateTicket}
-                            onTicketClick={(id) => {
-                                setSelectedTicketId(id);
-                                setCurrentView('detail');
-                            }}
-                        />
-                    )}
-                    {currentView === 'reports' && (
-                        <ReportsView tickets={tickets} />
-                    )}
+                    {currentView === 'board' && <TicketKanbanView tickets={tickets} users={users} onUpdateTicket={handleUpdateTicket} />}
+                    {currentView === 'reports' && <ReportsView tickets={tickets} />}
                     {currentView === 'create' && <CreateTicketViewWrapper />}
                     {currentView === 'detail' && <TicketDetailView />}
                     {currentView === 'settings' && <SettingsView />}
@@ -2640,6 +2724,17 @@ export default function App() {
             <UserSwitcherModal />
             <ImageLightbox />
 
+            {showAdminConfig && (
+                <AdminConfigView
+                    onClose={() => setShowAdminConfig(false)}
+                    initialStatuses={masterData.statuses}
+                    initialModules={masterData.modules}
+                    onUpdate={async () => {
+                        const data = await StorageService.fetchMasterData();
+                        setMasterData(data);
+                    }}
+                />
+            )}
         </div>
     );
 }

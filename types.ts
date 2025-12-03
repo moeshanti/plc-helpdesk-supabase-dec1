@@ -97,3 +97,16 @@ export interface AppConfig {
   lastSync?: Date;
   isDark: boolean;
 }
+
+export interface StatusConfig {
+  id: number;
+  label: string;
+  colorHex: string;
+  sortOrder: number;
+}
+
+export interface ModuleConfig {
+  id: number;
+  label: string;
+  sortOrder: number;
+}

@@ -1,4 +1,4 @@
-import { Ticket, User, TicketStatus, TicketPriority, UserRole } from '../types';
+import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig } from '../types';
 import { supabase } from './supabaseClient';
 
 // Helper to map DB snake_case to App camelCase
@@ -414,5 +414,86 @@ export const StorageService = {
     }
   },
 
-  mapDbTicketToLocal: mapDbTicketToLocal
+  mapDbTicketToLocal: mapDbTicketToLocal,
+
+  // --- Master Data Management ---
+
+  fetchMasterData: async (): Promise<{ statuses: StatusConfig[], modules: ModuleConfig[] }> => {
+    if (!supabase) return { statuses: [], modules: [] };
+
+    const [statusRes, moduleRes] = await Promise.all([
+      supabase.from('ticket_statuses').select('*').order('sort_order'),
+      supabase.from('ticket_modules').select('*').order('sort_order')
+    ]);
+
+    if (statusRes.error) console.error('Error fetching statuses:', statusRes.error);
+    if (moduleRes.error) console.error('Error fetching modules:', moduleRes.error);
+
+    return {
+      statuses: (statusRes.data || []).map((s: any) => ({
+        id: s.id,
+        label: s.label,
+        colorHex: s.color_hex,
+        sortOrder: s.sort_order
+      })),
+      modules: (moduleRes.data || []).map((m: any) => ({
+        id: m.id,
+        label: m.label,
+        sortOrder: m.sort_order
+      }))
+    };
+  },
+
+  createStatus: async (status: Omit<StatusConfig, 'id'>): Promise<StatusConfig | null> => {
+    const { data, error } = await supabase
+      .from('ticket_statuses')
+      .insert({
+        label: status.label,
+        color_hex: status.colorHex,
+        sort_order: status.sortOrder
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating status:', error);
+      return null;
+    }
+    return { id: data.id, label: data.label, colorHex: data.color_hex, sortOrder: data.sort_order };
+  },
+
+  deleteStatus: async (id: number): Promise<boolean> => {
+    const { error } = await supabase.from('ticket_statuses').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting status:', error);
+      return false;
+    }
+    return true;
+  },
+
+  createModule: async (module: Omit<ModuleConfig, 'id'>): Promise<ModuleConfig | null> => {
+    const { data, error } = await supabase
+      .from('ticket_modules')
+      .insert({
+        label: module.label,
+        sort_order: module.sortOrder
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating module:', error);
+      return null;
+    }
+    return { id: data.id, label: data.label, sortOrder: data.sort_order };
+  },
+
+  deleteModule: async (id: number): Promise<boolean> => {
+    const { error } = await supabase.from('ticket_modules').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting module:', error);
+      return false;
+    }
+    return true;
+  }
 };

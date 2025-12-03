@@ -1,0 +1,29 @@
+
+> copy-of-plc-erp-helpdesk--used-for-supabase@0.0.0 build
+> vite build
+
+vite v6.4.1 building for production...
+transforming...
+✓ 3465 modules transformed.
+✗ Build failed in 1.43s
+error during build:
+App.tsx (64:9): "withTimeout" is not exported by "utils/timeout.ts", imported by "App.tsx".
+file: /Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/App.tsx:64:9
+
+62:     Star
+63: } from 'lucide-react';
+64: import { withTimeout } from './utils/timeout';
+             ^
+65: import {
+66:     BarChart,
+
+    at getRollupError (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/parseAst.js:401:41)
+    at error (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/parseAst.js:397:42)
+    at Module.error (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:16956:16)
+    at Module.traceVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:17412:29)
+    at ModuleScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:15076:39)
+    at FunctionScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at FunctionBodyScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at ReturnValueScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at FunctionBodyScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at ReturnValueScope.findVariable (file:///Users/mohammadelshanti/Desktop/erp-helpdesk-supabase2-correct-main/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
