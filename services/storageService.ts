@@ -1,4 +1,4 @@
-import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig } from '../types';
+import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig } from '../types';
 import { supabase } from './supabaseClient';
 
 // Helper to map DB snake_case to App camelCase
@@ -265,7 +265,7 @@ export const StorageService = {
     }
     const { data, error } = await supabase
       .from('tickets')
-      .select('*')
+      .select('id, number, title, description, module, status, priority, reporter_id, assignee_id, created_at, updated_at, steps_to_reproduce, comments, relations, satisfaction_rating')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -274,6 +274,21 @@ export const StorageService = {
     }
 
     return data.map(mapDbTicketToLocal);
+  },
+
+  fetchTicketDetails: async (id: string): Promise<Ticket | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching ticket details:', error);
+      return null;
+    }
+    return mapDbTicketToLocal(data);
   },
 
   fetchUsers: async (): Promise<User[]> => {
@@ -418,16 +433,18 @@ export const StorageService = {
 
   // --- Master Data Management ---
 
-  fetchMasterData: async (): Promise<{ statuses: StatusConfig[], modules: ModuleConfig[] }> => {
-    if (!supabase) return { statuses: [], modules: [] };
+  fetchMasterData: async (): Promise<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[] }> => {
+    if (!supabase) return { statuses: [], modules: [], slas: [] };
 
-    const [statusRes, moduleRes] = await Promise.all([
+    const [statusRes, moduleRes, slaRes] = await Promise.all([
       supabase.from('ticket_statuses').select('*').order('sort_order'),
-      supabase.from('ticket_modules').select('*').order('sort_order')
+      supabase.from('ticket_modules').select('*').order('sort_order'),
+      supabase.from('ticket_slas').select('*').order('resolution_hours') // Order by hours (Critical usually lowest)
     ]);
 
     if (statusRes.error) console.error('Error fetching statuses:', statusRes.error);
     if (moduleRes.error) console.error('Error fetching modules:', moduleRes.error);
+    if (slaRes.error) console.error('Error fetching SLAs:', slaRes.error);
 
     return {
       statuses: (statusRes.data || []).map((s: any) => ({
@@ -440,6 +457,12 @@ export const StorageService = {
         id: m.id,
         label: m.label,
         sortOrder: m.sort_order
+      })),
+      slas: (slaRes.data || []).map((s: any) => ({
+        id: s.id,
+        priority: s.priority,
+        resolution_hours: s.resolution_hours,
+        color_hex: s.color_hex
       }))
     };
   },
@@ -492,6 +515,19 @@ export const StorageService = {
     const { error } = await supabase.from('ticket_modules').delete().eq('id', id);
     if (error) {
       console.error('Error deleting module:', error);
+      return false;
+    }
+    return true;
+  },
+
+  updateSla: async (id: number, hours: number): Promise<boolean> => {
+    const { error } = await supabase
+      .from('ticket_slas')
+      .update({ resolution_hours: hours })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating SLA:', error);
       return false;
     }
     return true;

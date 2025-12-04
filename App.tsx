@@ -58,10 +58,10 @@ import {
     Kanban,
     List,
     BarChart3,
-    PieChart as PieChartIcon,
-    Star
+    PieChart as PieChartIcon
 } from 'lucide-react';
 import { withTimeout } from './utils/timeout';
+import { SlaTimer } from './components/SlaTimer';
 import {
     BarChart,
     Bar,
@@ -79,7 +79,11 @@ import {
     Sector,
     Label
 } from 'recharts';
-import { User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation, StatusConfig, ModuleConfig } from './types';
+import {
+    User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation, StatusConfig,
+    ModuleConfig,
+    SlaConfig
+} from './types';
 import { ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import { supabase } from './services/supabaseClient';
@@ -391,7 +395,7 @@ export default function App() {
     const [showAdminConfig, setShowAdminConfig] = useState(false);
 
     // Master Data State
-    const [masterData, setMasterData] = useState<{ statuses: StatusConfig[], modules: ModuleConfig[] }>({ statuses: [], modules: [] });
+    const [masterData, setMasterData] = useState<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[] }>({ statuses: [], modules: [], slas: [] });
 
     const sidebarItems = [
         { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -402,6 +406,22 @@ export default function App() {
     ];
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Ref to track selected ticket ID for realtime updates
+    const selectedTicketIdRef = useRef<string | null>(null);
+
+    // Update ref when state changes
+    useEffect(() => {
+        selectedTicketIdRef.current = selectedTicketId;
+        if (selectedTicketId) {
+            // Fetch full details when selected
+            StorageService.fetchTicketDetails(selectedTicketId).then(fullTicket => {
+                if (fullTicket) {
+                    setTickets(prev => prev.map(t => t.id === fullTicket.id ? fullTicket : t));
+                }
+            });
+        }
+    }, [selectedTicketId]);
 
     // --- INITIALIZATION ---
     useEffect(() => {
@@ -417,26 +437,37 @@ export default function App() {
                     return [newTicket, ...prev];
                 });
             })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, async (payload) => {
                 const newTicketData = payload.new;
+
+                // If the updated ticket is the one currently selected, fetch full details to preserve attachments/comments
+                let fullDetails: Ticket | null = null;
+                if (selectedTicketIdRef.current === newTicketData.id) {
+                    fullDetails = await StorageService.fetchTicketDetails(newTicketData.id);
+                }
+
                 setTickets(prev => prev.map(t => {
                     if (t.id !== newTicketData.id) return t;
 
+                    // If we fetched full details, use them
+                    if (fullDetails) return fullDetails;
+
                     // Safety check: ensure critical fields exist before mapping
-                    // If title or status is missing, it's likely a partial update (e.g. due to REPLICA IDENTITY settings)
-                    // or a corrupted payload. We ignore it to prevent overwriting local state with undefined values.
                     if (!newTicketData.title || !newTicketData.status) {
-                        console.warn('Received partial or invalid update from Realtime, ignoring:', newTicketData);
                         return t;
                     }
 
                     const updatedTicket = StorageService.mapDbTicketToLocal(newTicketData);
 
-                    // FIX: If attachments are large (Base64), Postgres might TOAST them and omit them from the Realtime payload.
-                    // They can appear as null or undefined.
-                    // If we have local attachments and the payload sends null/undefined, preserve our local copy.
+                    // Preserve local attachments if payload has them as null (common with TOASTed columns in realtime)
                     if ((newTicketData.attachments === null || newTicketData.attachments === undefined) && t.attachments.length > 0) {
                         updatedTicket.attachments = t.attachments;
+                    }
+
+                    // Preserve comments if payload has them as null/empty but we have them locally
+                    // (Realtime payload might not include joined data or large JSONB fields)
+                    if ((!updatedTicket.comments || updatedTicket.comments.length === 0) && t.comments.length > 0) {
+                        updatedTicket.comments = t.comments;
                     }
 
                     return updatedTicket;
@@ -449,17 +480,17 @@ export default function App() {
                 console.log("Starting data load...");
                 console.log("Supabase URL:", (import.meta as any).env.VITE_SUPABASE_URL);
 
-                const pTickets = withTimeout(StorageService.fetchTickets(), 15000, 'fetchTickets')
+                const pTickets = withTimeout(StorageService.fetchTickets(), 60000, 'fetchTickets')
                     .then(res => { console.log("Tickets fetched"); return res; })
                     .catch(err => { console.error("Tickets fetch failed:", err); return []; });
 
-                const pUsers = withTimeout(StorageService.fetchUsers(), 15000, 'fetchUsers')
+                const pUsers = withTimeout(StorageService.fetchUsers(), 60000, 'fetchUsers')
                     .then(res => { console.log("Users fetched"); return res; })
                     .catch(err => { console.error("Users fetch failed:", err); return []; });
 
-                const pMaster = withTimeout(StorageService.fetchMasterData(), 15000, 'fetchMasterData')
+                const pMaster = withTimeout(StorageService.fetchMasterData(), 60000, 'fetchMasterData')
                     .then(res => { console.log("Master data fetched"); return res; })
-                    .catch(err => { console.error("Master data fetch failed:", err); return { statuses: [], modules: [] }; });
+                    .catch(err => { console.error("Master data fetch failed:", err); return { statuses: [], modules: [], slas: [] }; });
 
                 const [loadedTickets, loadedUsers, loadedMasterData] = await Promise.all([pTickets, pUsers, pMaster]);
 
@@ -1090,6 +1121,30 @@ export default function App() {
             document.body.removeChild(link);
         };
 
+        // Capture logs
+        const [logs, setLogs] = useState<string[]>([]);
+        useEffect(() => {
+            const originalLog = console.log;
+            const originalError = console.error;
+            console.log = (...args) => {
+                setLogs(prev => [...prev, `LOG: ${args.join(' ')}`]);
+                originalLog(...args);
+            };
+            console.error = (...args) => {
+                setLogs(prev => [...prev, `ERR: ${args.join(' ')}`]);
+                originalError(...args);
+            };
+            return () => {
+                console.log = originalLog;
+                console.error = originalError;
+            };
+        }, []);
+
+        // Master Data State
+        const [masterData, setMasterData] = useState<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[] }>({ statuses: [], modules: [], slas: [] });
+
+        // ... (rest of code)
+
         return (
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden animate-fade-in transition-colors">
                 <div className="p-5 border-b border-gray-100 dark:border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center bg-gray-50/50 dark:bg-slate-800/50 gap-4">
@@ -1196,6 +1251,7 @@ export default function App() {
                                 <th className="p-4 font-semibold border-b dark:border-slate-700">Module</th>
                                 <th className="p-4 font-semibold border-b dark:border-slate-700">Status</th>
                                 <th className="p-4 font-semibold border-b dark:border-slate-700">Priority</th>
+                                <th className="p-4 font-semibold border-b dark:border-slate-700">SLA</th>
                                 <th className="p-4 font-semibold border-b dark:border-slate-700">Assignee</th>
                             </tr>
                         </thead>
@@ -1214,6 +1270,7 @@ export default function App() {
                                         </td>
                                         <td className="p-4"><StatusBadge status={ticket.status} config={masterData.statuses} /></td>
                                         <td className="p-4"><PriorityBadge priority={ticket.priority} /></td>
+                                        <td className="p-4"><SlaTimer ticket={ticket} config={masterData.slas} compact /></td>
                                         <td className="p-4">
                                             {assignee ? (
                                                 <div className="flex items-center space-x-2">
@@ -1227,7 +1284,7 @@ export default function App() {
                             })}
                             {visibleTickets.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                                    <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">
                                         No tickets found matching your criteria.
                                     </td>
                                 </tr>
@@ -1304,15 +1361,26 @@ export default function App() {
                         inlineData: { data: (att.base64 as string).split(',')[1], mimeType: att.mimeType || 'image/png' }
                     }));
 
-                    analyzeTicketAttachment(imageParts, commentText || "User uploaded screenshot in comment").then(analysis => {
-                        setTickets(prev => prev.map(t => {
-                            if (t.id !== ticket.id) return t;
-                            return {
-                                ...t,
-                                comments: t.comments.map(c => c.id === commentId ? { ...c, isAnalyzing: false, aiAnalysis: analysis } : c)
-                            };
-                        }));
-                    });
+                    analyzeTicketImages(imageParts, commentText || "User uploaded screenshot in comment")
+                        .then(analysis => {
+                            setTickets(prev => prev.map(t => {
+                                if (t.id !== ticket.id) return t;
+                                return {
+                                    ...t,
+                                    comments: t.comments.map(c => c.id === commentId ? { ...c, isAnalyzing: false, aiAnalysis: analysis } : c)
+                                };
+                            }));
+                        })
+                        .catch(err => {
+                            console.error("AI Analysis failed:", err);
+                            setTickets(prev => prev.map(t => {
+                                if (t.id !== ticket.id) return t;
+                                return {
+                                    ...t,
+                                    comments: t.comments.map(c => c.id === commentId ? { ...c, isAnalyzing: false, aiAnalysis: "Failed to analyze image. Please try again." } : c)
+                                };
+                            }));
+                        });
                 }
             }
         };
@@ -1455,6 +1523,7 @@ export default function App() {
                                 <span className="font-mono text-sm font-bold text-gray-400">{ticket.number}</span>
                                 <StatusBadge status={ticket.status} config={masterData.statuses} />
                                 <PriorityBadge priority={ticket.priority} />
+                                <SlaTimer ticket={ticket} config={masterData.slas} />
                             </div>
                             <button onClick={() => setCurrentView('list')} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
                                 <X className="h-5 w-5" />
@@ -2713,7 +2782,7 @@ export default function App() {
                 <div className="flex-1 overflow-auto p-4 sm:p-8 custom-scrollbar">
                     {currentView === 'dashboard' && <DashboardView />}
                     {currentView === 'list' && <TicketListView />}
-                    {currentView === 'board' && <TicketKanbanView tickets={tickets} users={users} onUpdateTicket={handleUpdateTicket} />}
+                    {currentView === 'board' && <TicketKanbanView tickets={tickets} onUpdateTicket={handleUpdateTicket} onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('detail'); }} />}
                     {currentView === 'reports' && <ReportsView tickets={tickets} />}
                     {currentView === 'create' && <CreateTicketViewWrapper />}
                     {currentView === 'detail' && <TicketDetailView />}
@@ -2729,6 +2798,7 @@ export default function App() {
                     onClose={() => setShowAdminConfig(false)}
                     initialStatuses={masterData.statuses}
                     initialModules={masterData.modules}
+                    initialSlas={masterData.slas}
                     onUpdate={async () => {
                         const data = await StorageService.fetchMasterData();
                         setMasterData(data);

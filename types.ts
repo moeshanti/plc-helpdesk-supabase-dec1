@@ -105,6 +105,13 @@ export interface StatusConfig {
   sortOrder: number;
 }
 
+export interface SlaConfig {
+  id: number;
+  priority: string; // 'Critical', 'High', 'Medium', 'Low'
+  resolution_hours: number;
+  color_hex: string;
+}
+
 export interface ModuleConfig {
   id: number;
   label: string;

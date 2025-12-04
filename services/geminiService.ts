@@ -10,6 +10,16 @@ export const analyzeTicketImages = async (
   context: string,
   isCreationMode: boolean = false
 ): Promise<string> => {
+  // Mock for localhost development
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    console.log("Mocking AI Analysis for Localhost");
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve(`**Mock Analysis (Localhost):**\n\nBased on the screenshot provided, I can see an error dialog related to "${context}".\n\n**Potential Issues:**\n1. Data inconsistency in the invoice record.\n2. Network timeout during the posting process.\n\n**Suggested Actions:**\n- Verify the invoice details against the PO.\n- Check the browser console for network errors.`);
+      }, 2000);
+    });
+  }
+
   try {
     const response = await fetch('/.netlify/functions/analyze', {
       method: 'POST',
