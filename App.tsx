@@ -318,6 +318,11 @@ export default function App() {
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const handleViewChange = (view: typeof currentView) => {
+        setCurrentView(view);
+        setSearchQuery('');
+    };
+
     // Lifted state for TicketListView
 
     const [filters, setFilters] = useState({
@@ -502,7 +507,7 @@ export default function App() {
     const handleSwitchUser = (user: User) => {
         setCurrentUser(user);
         setShowUserSwitcher(false);
-        setCurrentView('dashboard');
+        handleViewChange('dashboard');
         setIsMobileMenuOpen(false);
     };
 
@@ -538,7 +543,7 @@ export default function App() {
 
         // Optimistic update
         setTickets(prev => [newTicketData, ...prev]);
-        setCurrentView('list');
+        handleViewChange('list');
 
         // Save to DB
         const createdTicket = await StorageService.createTicket(newTicketData);
@@ -783,7 +788,7 @@ export default function App() {
                         <p className="text-brand-100 text-sm mb-6">Need assistance with 1C ERP? Log a ticket instantly.</p>
                     </div>
                     <button
-                        onClick={() => setCurrentView('create')}
+                        onClick={() => handleViewChange('create')}
                         className="w-full bg-white text-brand-700 py-3 rounded-xl font-bold shadow-md hover:bg-brand-50 transition-colors flex items-center justify-center"
                     >
                         <Plus className="h-5 w-5 mr-2" /> Log New Ticket
@@ -1215,7 +1220,7 @@ export default function App() {
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
                         <Plus className="mr-2 text-brand-600" /> Log New ERP Ticket
                     </h2>
-                    <button onClick={() => setCurrentView('list')} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
+                    <button onClick={() => handleViewChange('list')} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
                         <X className="h-6 w-6" />
                     </button>
                 </div>
@@ -1481,7 +1486,7 @@ export default function App() {
                     </div>
 
                     <div className="pt-8 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-4">
-                        <button onClick={() => setCurrentView('list')} className="px-8 py-4 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 rounded-2xl transition-colors">Cancel</button>
+                        <button onClick={() => handleViewChange('list')} className="px-8 py-4 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 rounded-2xl transition-colors">Cancel</button>
                         <button
                             onClick={handleSubmit}
                             disabled={!title || !description || isSubmitting}
@@ -1644,7 +1649,7 @@ export default function App() {
                     {sidebarItems.map((item) => (
                         <button
                             key={item.id}
-                            onClick={() => { setCurrentView(item.id as any); setIsMobileMenuOpen(false); }}
+                            onClick={() => { handleViewChange(item.id as any); setIsMobileMenuOpen(false); }}
                             className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 group
                         ${currentView === item.id
                                     ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/20'
@@ -1659,7 +1664,7 @@ export default function App() {
 
                 <div className="p-4 mt-auto">
                     <button
-                        onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }}
+                        onClick={() => { handleViewChange('settings'); setIsMobileMenuOpen(false); }}
                         className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 mb-2
                         ${currentView === 'settings' ? 'bg-white/10 text-white' : 'text-brand-100 hover:bg-white/5'}`}
                     >
@@ -1740,12 +1745,12 @@ export default function App() {
                             filters={filters}
                             setFilters={setFilters}
                             setSelectedTicketId={setSelectedTicketId}
-                            setCurrentView={setCurrentView}
+                            setCurrentView={handleViewChange}
                             searchQuery={searchQuery}
                             setSearchQuery={setSearchQuery}
                         />
                     )}
-                    {currentView === 'board' && <TicketKanbanView tickets={tickets} onUpdateTicket={handleUpdateTicket} onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('detail'); }} />}
+                    {currentView === 'board' && <TicketKanbanView tickets={tickets} onUpdateTicket={handleUpdateTicket} onTicketClick={(id) => { setSelectedTicketId(id); handleViewChange('detail'); }} />}
                     {currentView === 'reports' && <ReportsView tickets={tickets} />}
                     {currentView === 'create' && <CreateTicketViewWrapper />}
                     {currentView === 'detail' && selectedTicket && (
@@ -1756,7 +1761,7 @@ export default function App() {
                             currentUser={currentUser}
                             users={users}
                             masterData={masterData}
-                            onClose={() => setCurrentView('list')}
+                            onClose={() => handleViewChange('list')}
                             onUpdateTicket={handleUpdateTicket}
                             onTicketUpdated={(updatedTicket) => {
                                 setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
