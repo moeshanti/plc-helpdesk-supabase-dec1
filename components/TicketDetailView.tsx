@@ -443,7 +443,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                     {/* Ticket Attachments Grid */}
                     {ticket.attachments && ticket.attachments.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-2">
-                            {ticket.attachments.map((att, idx) => (
+                            {ticket.attachments.filter(att => att.url && !att.url.startsWith('blob:')).map((att, idx) => (
                                 <div key={idx} className="relative group">
                                     {att.type === 'video' ? (
                                         <div className="w-64 h-48 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 bg-black">
@@ -459,7 +459,17 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                                             className="group relative block overflow-hidden rounded-lg border border-gray-200 dark:border-slate-700 w-24 h-24 transition-transform hover:scale-105"
                                         >
                                             {att.type === 'image' ? (
-                                                <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
+                                                <img
+                                                    src={att.url}
+                                                    alt={att.name}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        // Fallback for broken images that might slip through
+                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                        (e.target as HTMLImageElement).parentElement?.classList.add('bg-gray-100', 'flex', 'items-center', 'justify-center');
+                                                        // Insert an icon if possible, or just leave blank
+                                                    }}
+                                                />
                                             ) : (
                                                 <div className="w-full h-full bg-gray-50 dark:bg-slate-700 flex items-center justify-center">
                                                     <FileText className="h-8 w-8 text-gray-400" />
