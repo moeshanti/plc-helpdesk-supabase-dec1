@@ -4,21 +4,22 @@ import { supabase } from './supabaseClient';
 // Helper to map DB snake_case to App camelCase
 export const mapDbTicketToLocal = (data: any): Ticket => ({
   id: data.id,
-  number: data.number,
-  title: data.title,
-  description: data.description,
-  module: data.module,
-  status: data.status as TicketStatus,
-  priority: data.priority as TicketPriority,
+  number: data.number || 'TIC-000', // Fallback for missing number
+  title: data.title || 'Untitled Ticket', // Fallback for missing title
+  description: data.description || '',
+  module: data.module || 'System',
+  status: (data.status as TicketStatus) || TicketStatus.OPEN,
+  priority: (data.priority as TicketPriority) || TicketPriority.LOW,
   reporterId: data.reporter_id,
   assigneeId: data.assignee_id,
   createdAt: new Date(data.created_at),
   updatedAt: new Date(data.updated_at),
-  stepsToReproduce: data.steps_to_reproduce,
+  stepsToReproduce: data.steps_to_reproduce || '',
   attachments: data.attachments || [],
   comments: data.comments ? data.comments.map((c: any) => ({
     ...c,
-    timestamp: new Date(c.timestamp)
+    timestamp: new Date(c.timestamp),
+    isAnalyzing: false // Always reset analysis state on load
   })) : [],
   relations: data.relations || [],
   satisfactionRating: data.satisfaction_rating
@@ -44,8 +45,8 @@ export const INITIAL_TICKETS: Ticket[] = [
     priority: TicketPriority.CRITICAL,
     reporterId: 'u4',
     assigneeId: 'u2',
-    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
-    updatedAt: new Date(Date.now() - 3600000),
+    createdAt: new Date(Date.now() - 3600000), // 1 hour ago (SLA: 4h -> 3h left)
+    updatedAt: new Date(Date.now() - 1800000),
     stepsToReproduce: '1. Go to Warehouse.\n2. Adjust stock for Item A.\n3. Check Sales module for Item A.\n4. Stock mismatch.',
     attachments: [
       { id: 'a1', name: 'error_log.png', type: 'image', url: 'https://picsum.photos/seed/error/400/300', mimeType: 'image/png' }
@@ -83,8 +84,8 @@ export const INITIAL_TICKETS: Ticket[] = [
     priority: TicketPriority.HIGH,
     reporterId: 'u1',
     assigneeId: 'u2',
-    createdAt: new Date(Date.now() - 43200000), // 12 hours ago
-    updatedAt: new Date(Date.now() - 43200000),
+    createdAt: new Date(Date.now() - 7200000), // 2 hours ago (SLA: 8h -> 6h left)
+    updatedAt: new Date(Date.now() - 7200000),
     stepsToReproduce: 'Run "Month End" for September.',
     attachments: [],
     comments: [],
@@ -100,7 +101,7 @@ export const INITIAL_TICKETS: Ticket[] = [
     priority: TicketPriority.CRITICAL,
     reporterId: 'u5',
     assigneeId: 'u3',
-    createdAt: new Date(Date.now() - 172800000), // 2 days
+    createdAt: new Date(Date.now() - 18000000), // 5 hours ago (SLA: 4h -> Overdue by 1h)
     updatedAt: new Date(),
     stepsToReproduce: 'Calculate payroll for Employee #105.',
     attachments: [],
@@ -265,7 +266,7 @@ export const StorageService = {
     }
     const { data, error } = await supabase
       .from('tickets')
-      .select('id, number, title, description, module, status, priority, reporter_id, assignee_id, created_at, updated_at, steps_to_reproduce, comments, relations, satisfaction_rating')
+      .select('id, number, title, module, status, priority, reporter_id, assignee_id, created_at, updated_at, satisfaction_rating')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -445,6 +446,7 @@ export const StorageService = {
     if (statusRes.error) console.error('Error fetching statuses:', statusRes.error);
     if (moduleRes.error) console.error('Error fetching modules:', moduleRes.error);
     if (slaRes.error) console.error('Error fetching SLAs:', slaRes.error);
+    else console.log('Raw SLA Data:', slaRes.data);
 
     return {
       statuses: (statusRes.data || []).map((s: any) => ({
@@ -461,7 +463,8 @@ export const StorageService = {
       slas: (slaRes.data || []).map((s: any) => ({
         id: s.id,
         priority: s.priority,
-        resolution_hours: s.resolution_hours,
+        // Handle potential column name mismatches or missing data
+        resolution_hours: s.resolution_hours || s.resolution_time || s.hours || 0,
         color_hex: s.color_hex
       }))
     };
@@ -531,5 +534,31 @@ export const StorageService = {
       return false;
     }
     return true;
+  },
+
+  uploadFile: async (file: File): Promise<string | null> => {
+    if (!supabase) return null;
+
+    // Generate a unique file path: timestamp_random_filename
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error } = await supabase.storage
+      .from('attachments')
+      .upload(filePath, file);
+
+    if (error) {
+      console.error('Error uploading file:', error);
+      return null;
+    }
+
+    return filePath;
+  },
+
+  getPublicUrl: (path: string): string => {
+    if (!supabase) return '';
+    const { data } = supabase.storage.from('attachments').getPublicUrl(path);
+    return data.publicUrl;
   }
 };

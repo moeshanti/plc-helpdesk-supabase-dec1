@@ -45,8 +45,9 @@ export interface Attachment {
   id: string;
   name: string;
   type: 'image' | 'video' | 'document';
-  url: string; // Base64 or Blob URL
-  base64?: string; // For AI processing
+  url: string; // Base64 or Blob URL (or Public URL from Storage)
+  base64?: string; // For AI processing (legacy or temp)
+  storagePath?: string; // Path in Supabase Storage
   mimeType?: string;
 }
 
@@ -116,4 +117,10 @@ export interface ModuleConfig {
   id: number;
   label: string;
   sortOrder: number;
+}
+
+export interface MasterData {
+  statuses: StatusConfig[];
+  modules: ModuleConfig[];
+  slas: SlaConfig[];
 }

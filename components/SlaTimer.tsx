@@ -1,75 +1,72 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Ticket, SlaConfig, TicketStatus } from '../types';
-import { Clock, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface SlaTimerProps {
     ticket: Ticket;
-    config?: SlaConfig;
+    slas: SlaConfig[];
 }
 
-export const SlaTimer: React.FC<SlaTimerProps> = ({ ticket, config }) => {
-    const [timeLeft, setTimeLeft] = useState<number | null>(null);
-    const [isOverdue, setIsOverdue] = useState(false);
+export const SlaTimer: React.FC<SlaTimerProps> = ({ ticket, slas }) => {
+    // Don't show timer for closed/resolved tickets
+    if (
+        ticket.status === TicketStatus.RESOLVED ||
+        ticket.status === TicketStatus.CLOSED ||
+        ticket.status === TicketStatus.PARTIALLY_CLOSED
+    ) {
+        return null;
+    }
 
-    useEffect(() => {
-        if (!config) return;
+    const slaConfig = slas.find(s => s.priority === ticket.priority);
 
-        const calculateTimeLeft = () => {
-            const created = new Date(ticket.createdAt).getTime();
-            const deadline = created + (config.resolution_hours * 60 * 60 * 1000);
-            const now = Date.now();
+    if (!slaConfig) {
+        return null;
+    }
 
-            // If ticket is resolved/closed, check if it met SLA based on updatedAt
-            if (ticket.status === TicketStatus.RESOLVED || ticket.status === TicketStatus.CLOSED) {
-                const resolvedAt = new Date(ticket.updatedAt).getTime();
-                return resolvedAt - deadline; // Negative means met SLA, Positive means missed
-            }
+    const createdTime = new Date(ticket.createdAt).getTime();
+    const resolutionTimeMs = slaConfig.resolution_hours * 60 * 60 * 1000;
+    const targetTime = createdTime + resolutionTimeMs;
+    const now = Date.now();
+    const timeRemaining = targetTime - now;
 
-            // If active, calculate time remaining
-            return deadline - now;
-        };
+    const isOverdue = timeRemaining < 0;
+    const isWarning = !isOverdue && timeRemaining < 2 * 60 * 60 * 1000; // Less than 2 hours left
 
-        const updateTimer = () => {
-            const diff = calculateTimeLeft();
-            setTimeLeft(diff);
-
-            // Only consider overdue if it's active and time is negative
-            if (ticket.status !== TicketStatus.RESOLVED && ticket.status !== TicketStatus.CLOSED) {
-                setIsOverdue(diff < 0);
-            }
-        };
-
-        updateTimer();
-        const interval = setInterval(updateTimer, 60000); // Update every minute
-
-        return () => clearInterval(interval);
-    }, [ticket, config]);
-
-    if (!config) return null;
-
+    // Format time string
     const formatDuration = (ms: number) => {
         const absMs = Math.abs(ms);
         const hours = Math.floor(absMs / (1000 * 60 * 60));
         const minutes = Math.floor((absMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        if (hours > 24) {
+            const days = Math.floor(hours / 24);
+            return `${days}d ${hours % 24}h`;
+        }
         return `${hours}h ${minutes}m`;
     };
 
-    // Resolved/Closed State
-    if (ticket.status === TicketStatus.RESOLVED || ticket.status === TicketStatus.CLOSED) {
-        const missed = timeLeft !== null && timeLeft > 0;
-        return (
-            <div className={`flex items-center text-xs font-medium px-2 py-1 rounded-full border ${missed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400' : 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400'}`}>
-                {missed ? <XCircle className="w-3 h-3 mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                {missed ? `Missed by ${formatDuration(timeLeft || 0)}` : 'Met SLA'}
-            </div>
-        );
+    const timeString = formatDuration(timeRemaining);
+
+    let badgeClass = '';
+    let icon = <Clock className="w-3 h-3 mr-1" />;
+    let text = '';
+
+    if (isOverdue) {
+        badgeClass = 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800';
+        icon = <AlertCircle className="w-3 h-3 mr-1" />;
+        text = `Overdue by ${timeString}`;
+    } else if (isWarning) {
+        badgeClass = 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
+        text = `${timeString} left`;
+    } else {
+        badgeClass = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800';
+        text = `${timeString} left`;
     }
 
-    // Active State
     return (
-        <div className={`flex items-center text-xs font-bold px-2 py-1 rounded-full border transition-all ${isOverdue ? 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/40 dark:text-red-300 animate-pulse' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300'}`}>
-            {isOverdue ? <AlertTriangle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
-            {isOverdue ? `Overdue: ${formatDuration(timeLeft || 0)}` : `${formatDuration(timeLeft || 0)} left`}
+        <div className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border ${badgeClass}`} title={`Target: ${new Date(targetTime).toLocaleString()}`}>
+            {icon}
+            {text}
         </div>
     );
 };
