@@ -545,7 +545,7 @@ export const StorageService = {
     const filePath = `${fileName}`;
 
     const { error } = await supabase.storage
-      .from('attachments')
+      .from('ticket-attachments')
       .upload(filePath, file);
 
     if (error) {
@@ -558,7 +558,7 @@ export const StorageService = {
 
   getPublicUrl: (path: string): string => {
     if (!supabase) return '';
-    const { data } = supabase.storage.from('attachments').getPublicUrl(path);
+    const { data } = supabase.storage.from('ticket-attachments').getPublicUrl(path);
     return data.publicUrl;
   },
 
