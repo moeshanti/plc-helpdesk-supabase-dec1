@@ -1127,6 +1127,7 @@ export default function App() {
         const [steps, setSteps] = useState('');
         const [files, setFiles] = useState<File[]>([]);
         const [videoFile, setVideoFile] = useState<File | null>(null);
+        const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
         const [activeTab, setActiveTab] = useState<SmartInputTab>('image');
         const [isAnalyzing, setIsAnalyzing] = useState(false);
         const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
@@ -1445,6 +1446,7 @@ export default function App() {
                                 {activeTab === 'record-video' && (
                                     <ReactMediaRecorder
                                         screen
+                                        onStop={(blobUrl, blob) => setRecordedVideoBlob(blob)}
                                         render={({ status, startRecording, stopRecording, mediaBlobUrl }) => (
                                             <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-white/20 rounded-2xl bg-white/5">
                                                 {status === 'recording' ? (
@@ -1461,7 +1463,7 @@ export default function App() {
                                                     <div className="w-full max-w-sm">
                                                         <video src={mediaBlobUrl} controls className="w-full rounded-lg mb-4" />
                                                         <div className="flex justify-center gap-4">
-                                                            <button onClick={() => { startRecording(); }} className="text-white/70 hover:text-white text-sm underline">Record Again</button>
+                                                            <button onClick={() => { startRecording(); setRecordedVideoBlob(null); }} className="text-white/70 hover:text-white text-sm underline">Record Again</button>
                                                             <button
                                                                 onClick={() => handleAnalyze(mediaBlobUrl)}
                                                                 className="bg-white text-indigo-600 px-6 py-2 rounded-full font-bold hover:bg-indigo-50 transition-colors"
