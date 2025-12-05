@@ -638,14 +638,55 @@ export default function App() {
         const reopened = tickets.filter(t => t.status === TicketStatus.REOPENED).length;
 
         // Calculate Average Resolution Time (in Hours)
-        // using updatedAt as a proxy for resolution time for resolved tickets
-        const totalResolutionTimeMs = resolvedTickets.reduce((acc, t) => {
-            const duration = t.updatedAt.getTime() - t.createdAt.getTime();
-            return acc + duration;
+        // Smart Scan: Look for the actual "changed status to Resolved" event in comments
+        const validResolvedTickets = resolvedTickets.filter(t => {
+            // We need a resolution date.
+            // Strategy: Find the LATEST system comment that switched status to a resolved state.
+            // If none found (legacy data), fall back to updatedAt.
+            return true;
+        });
+
+        const totalResolutionTimeMs = validResolvedTickets.reduce((acc, t) => {
+            let resolutionDate = t.updatedAt; // Default fallback
+
+            // Try to find exact resolution event in history
+            if (t.comments && t.comments.length > 0) {
+                // Find all status change events to resolved states
+                const resolutionEvents = t.comments.filter(c =>
+                    c.isSystem &&
+                    (c.text.includes('to Resolved') || c.text.includes('to Closed') || c.text.includes('to Partially Closed'))
+                );
+
+                if (resolutionEvents.length > 0) {
+                    // Use the latest one
+                    const lastEvent = resolutionEvents[resolutionEvents.length - 1];
+                    resolutionDate = lastEvent.timestamp;
+                }
+            }
+
+            const duration = resolutionDate.getTime() - t.createdAt.getTime();
+            // Sanity check: ignore negative durations (time travel data)
+            return duration >= 0 ? acc + duration : acc;
         }, 0);
 
-        const avgResolution = closed > 0
-            ? Math.round((totalResolutionTimeMs / closed) / (1000 * 60 * 60))
+        // We re-count valid tickets for the divisor because we might have excluded some negatives above
+        const validCount = validResolvedTickets.reduce((count, t) => {
+            let resolutionDate = t.updatedAt;
+            if (t.comments && t.comments.length > 0) {
+                const resolutionEvents = t.comments.filter(c =>
+                    c.isSystem &&
+                    (c.text.includes('to Resolved') || c.text.includes('to Closed') || c.text.includes('to Partially Closed'))
+                );
+                if (resolutionEvents.length > 0) {
+                    resolutionDate = resolutionEvents[resolutionEvents.length - 1].timestamp;
+                }
+            }
+            const duration = resolutionDate.getTime() - t.createdAt.getTime();
+            return duration >= 0 ? count + 1 : count;
+        }, 0);
+
+        const avgResolution = validCount > 0
+            ? Math.round((totalResolutionTimeMs / validCount) / (1000 * 60 * 60))
             : 0;
 
         const statusCounts = tickets.reduce((acc, t) => {
