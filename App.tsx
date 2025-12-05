@@ -61,6 +61,7 @@ import {
     PieChart as PieChartIcon
 } from 'lucide-react';
 import { withTimeout } from './utils/timeout';
+import { SlaHealthCard } from './components/SlaHealthCard';
 import { SlaTimer } from './components/SlaTimer';
 import {
     BarChart,
@@ -871,8 +872,9 @@ export default function App() {
                 })}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* Left Column: Ticket Volume Chart */}
+                <div className="xl:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col">
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center">
@@ -882,7 +884,7 @@ export default function App() {
                             <p className="text-sm text-gray-400">Tickets created vs resolved (7 days)</p>
                         </div>
                     </div>
-                    <div className="h-72 w-full">
+                    <div className="flex-1 min-h-[400px]">
                         <ResponsiveContainer width="100%" height="100%" minHeight={100}>
                             <AreaChart data={MOCK_TREND_DATA} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                 <defs>
@@ -905,8 +907,10 @@ export default function App() {
                     </div>
                 </div>
 
+                {/* Right Column: Performance Stack */}
                 <div className="flex flex-col gap-6">
-                    {/* User Satisfaction Card */}
+
+                    {/* 1. Satisfaction Card */}
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2 flex items-center">
                             <Star className="h-5 w-5 mr-2 text-yellow-500 fill-yellow-500" />
@@ -941,37 +945,14 @@ export default function App() {
                         </div>
                     </div>
 
-                    {/* Detailed Status (Existing) */}
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col flex-1">
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Detailed Status</h3>
-                        <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-                            {Object.values(TicketStatus).map(status => {
-                                const count = dashboardStats.statusCounts[status] || 0;
-                                if (count === 0) return null;
-                                const pct = Math.round((count / dashboardStats.total) * 100);
-                                return (
-                                    <div key={status} className="flex flex-col">
-                                        <div className="flex justify-between items-center text-sm mb-1">
-                                            <span className="text-gray-600 dark:text-gray-300 font-medium flex items-center">
-                                                <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: getStatusColor(status, isDark) }}></div>
-                                                {status}
-                                            </span>
-                                            <span className="text-gray-900 dark:text-white font-bold">{count}</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: getStatusColor(status, isDark) }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                    {/* 2. SLA Health Card */}
+                    <div className="flex-1 min-h-[240px]">
+                        <SlaHealthCard tickets={tickets} masterData={masterData} isDark={isDark} />
                     </div>
                 </div>
             </div>
         </div>
     );
-
-
 
     const CreateTicketView = () => {
         const [title, setTitle] = useState('');
