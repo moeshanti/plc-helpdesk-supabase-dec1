@@ -499,8 +499,10 @@ export default function App() {
         // 2. Notifications (Only if logged in)
         let notifSub: any = null;
         if (currentUser) {
+            // Use unique channel name per user to avoid collisions during switching
+            const channelName = `notifications_${currentUser.id}`;
             notifSub = supabase
-                .channel('notifications_channel')
+                .channel(channelName)
                 .on('postgres_changes', {
                     event: 'INSERT',
                     schema: 'public',
