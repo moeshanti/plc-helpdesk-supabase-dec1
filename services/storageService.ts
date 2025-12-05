@@ -1,4 +1,4 @@
-import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig } from '../types';
+import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig, Notification, NotificationType } from '../types';
 import { supabase } from './supabaseClient';
 
 // Helper to map DB snake_case to App camelCase
@@ -560,5 +560,52 @@ export const StorageService = {
     if (!supabase) return '';
     const { data } = supabase.storage.from('attachments').getPublicUrl(path);
     return data.publicUrl;
+  },
+
+  // --- Notifications ---
+
+  fetchNotifications: async (userId: string): Promise<Notification[]> => {
+    if (!supabase) return [];
+
+    // Get unread OR read within last 24 hours
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('recipient_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50); // Hard limit for safety
+
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      return [];
+    }
+
+    return data.map((n: any) => ({
+      id: n.id,
+      created_at: new Date(n.created_at),
+      recipient_id: n.recipient_id,
+      actor_id: n.actor_id,
+      ticket_id: n.ticket_id,
+      type: n.type as NotificationType,
+      message: n.message,
+      is_read: n.is_read
+    }));
+  },
+
+  markNotificationRead: async (id: string): Promise<void> => {
+    if (!supabase) return;
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+  },
+
+  createNotification: async (notification: Omit<Notification, 'id' | 'created_at' | 'is_read'>): Promise<void> => {
+    if (!supabase) return;
+    const { error } = await supabase.from('notifications').insert({
+      recipient_id: notification.recipient_id,
+      actor_id: notification.actor_id,
+      ticket_id: notification.ticket_id,
+      type: notification.type,
+      message: notification.message
+    });
+    if (error) console.error('Error creating notification:', error);
   }
 };

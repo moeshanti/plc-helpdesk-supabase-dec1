@@ -124,3 +124,16 @@ export interface MasterData {
   modules: ModuleConfig[];
   slas: SlaConfig[];
 }
+
+export type NotificationType = 'ASSIGN' | 'COMMENT' | 'STATUS';
+
+export interface Notification {
+  id: string;
+  created_at: Date;
+  recipient_id: string;
+  actor_id: string;
+  ticket_id: string;
+  type: NotificationType;
+  message: string;
+  is_read: boolean;
+}

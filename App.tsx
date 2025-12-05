@@ -63,6 +63,7 @@ import {
 import { withTimeout } from './utils/timeout';
 import { SlaHealthCard } from './components/SlaHealthCard';
 import { SlaTimer } from './components/SlaTimer';
+import { NotificationBell } from './components/NotificationBell';
 import {
     BarChart,
     Bar,
@@ -83,7 +84,8 @@ import {
 import {
     User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation, StatusConfig,
     ModuleConfig,
-    SlaConfig
+    SlaConfig,
+    Notification as AppNotification
 } from './types';
 import { ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
@@ -305,6 +307,7 @@ export default function App() {
     const [showUserSwitcher, setShowUserSwitcher] = useState(false);
     const [isDark, setIsDark] = useState(false);
     const [showAdminConfig, setShowAdminConfig] = useState(false);
+    const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
     // Master Data State
     const [masterData, setMasterData] = useState<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[] }>({ statuses: [], modules: [], slas: [] });
@@ -440,11 +443,17 @@ export default function App() {
                     .then(res => { console.log("Master data fetched"); return res; })
                     .catch(err => { console.error("Master data fetch failed:", err); return { statuses: [], modules: [], slas: [] }; });
 
-                const [loadedTickets, loadedUsers, loadedMasterData] = await Promise.all([pTickets, pUsers, pMaster]);
+                // Fetch Notifications if user is logged in
+                const pNotifications = currentUser
+                    ? StorageService.fetchNotifications(currentUser.id)
+                    : Promise.resolve([]);
+
+                const [loadedTickets, loadedUsers, loadedMasterData, loadedNotifications] = await Promise.all([pTickets, pUsers, pMaster, pNotifications]);
 
                 setTickets(loadedTickets || []);
                 setUsers(loadedUsers || []);
                 setMasterData(loadedMasterData);
+                setNotifications(loadedNotifications || []);
 
                 if (!currentUser && loadedUsers && loadedUsers.length > 0) {
                     console.log("Setting initial user:", loadedUsers[0].name);
@@ -467,10 +476,58 @@ export default function App() {
             document.documentElement.classList.remove('dark');
         }
 
+        // --- Real-time Subscriptions ---
+        // 1. Tickets
+        const ticketSub = supabase
+            .channel('tickets_channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, payload => {
+                const changedTicket = payload.new as any;
+                if (!changedTicket) return; // Delete event or something
+                setTickets(prev => {
+                    const exists = prev.find(t => t.id === changedTicket.id);
+                    // Use helper to ensure dates are Date objects, not strings
+                    const mapped = StorageService.mapDbTicketToLocal(changedTicket);
+                    if (exists) {
+                        return prev.map(t => t.id === changedTicket.id ? mapped : t);
+                    } else {
+                        return [mapped, ...prev];
+                    }
+                });
+            })
+            .subscribe();
+
+        // 2. Notifications (Only if logged in)
+        let notifSub: any = null;
+        if (currentUser) {
+            notifSub = supabase
+                .channel('notifications_channel')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `recipient_id=eq.${currentUser.id}`
+                }, payload => {
+                    const newNotif = payload.new as any;
+                    const mappedNotif: AppNotification = {
+                        id: newNotif.id,
+                        created_at: new Date(newNotif.created_at),
+                        recipient_id: newNotif.recipient_id,
+                        actor_id: newNotif.actor_id,
+                        ticket_id: newNotif.ticket_id,
+                        type: newNotif.type,
+                        message: newNotif.message,
+                        is_read: newNotif.is_read
+                    };
+                    setNotifications(prev => [mappedNotif, ...prev]);
+                })
+                .subscribe();
+        }
+
         return () => {
-            supabase.removeChannel(channel);
+            supabase.removeChannel(ticketSub);
+            if (notifSub) supabase.removeChannel(notifSub);
         };
-    }, []);
+    }, [currentUser]); // Re-run when user changes to update notification subscription
 
 
 
@@ -556,12 +613,27 @@ export default function App() {
 
     const handleUpdateTicket = async (id: string, updates: Partial<Ticket>) => {
         const ticketToUpdate = tickets.find(t => t.id === id);
-        if (!ticketToUpdate) return;
+        if (!ticketToUpdate || !currentUser) return;
 
         let updatedComments = ticketToUpdate.comments;
         const payload: Partial<Ticket> = { ...updates };
 
-        if (updates.status && updates.status !== ticketToUpdate.status && currentUser) {
+        // [NOTIFICATION LOGIC] Check for Assignment Change
+        if (updates.assigneeId && updates.assigneeId !== ticketToUpdate.assigneeId) {
+            // Notify New Assignee
+            if (updates.assigneeId !== currentUser.id) { // Don't notify self
+                await StorageService.createNotification({
+                    recipient_id: updates.assigneeId,
+                    actor_id: currentUser.id,
+                    ticket_id: id,
+                    type: 'ASSIGN',
+                    message: `${currentUser.name} assigned you Ticket #${ticketToUpdate.number}`
+                });
+            }
+        }
+
+        // [NOTIFICATION LOGIC] Check for Status Change (Notify Reporter)
+        if (updates.status && updates.status !== ticketToUpdate.status) {
             const systemComment: Comment = {
                 id: `sys${Date.now()}`,
                 userId: currentUser.id,
@@ -571,6 +643,17 @@ export default function App() {
             };
             updatedComments = [...updatedComments, systemComment];
             payload.comments = updatedComments;
+
+            // Notify Reporter if someone else changed their status
+            if (ticketToUpdate.reporterId !== currentUser.id) {
+                await StorageService.createNotification({
+                    recipient_id: ticketToUpdate.reporterId,
+                    actor_id: currentUser.id,
+                    ticket_id: id,
+                    type: 'STATUS',
+                    message: `Ticket #${ticketToUpdate.number} status updated to ${updates.status}`
+                });
+            }
         }
 
         // Optimistic update
@@ -599,6 +682,31 @@ export default function App() {
         };
 
         const updatedComments = [...ticket.comments, newComment];
+
+        // [NOTIFICATION LOGIC]
+        // 1. Notify Assignee (if commenter is NOT assignee)
+        if (ticket.assigneeId && ticket.assigneeId !== currentUser.id) {
+            await StorageService.createNotification({
+                recipient_id: ticket.assigneeId,
+                actor_id: currentUser.id,
+                ticket_id: ticket.id,
+                type: 'COMMENT',
+                message: `${currentUser.name} commented on Ticket #${ticket.number}`
+            });
+        }
+        // 2. Notify Reporter (if commenter is NOT reporter)
+        if (ticket.reporterId && ticket.reporterId !== currentUser.id) {
+            // Avoid double notification if Reporter == Assignee (edge case, handled by if checks usually)
+            if (ticket.reporterId !== ticket.assigneeId) {
+                await StorageService.createNotification({
+                    recipient_id: ticket.reporterId,
+                    actor_id: currentUser.id,
+                    ticket_id: ticket.id,
+                    type: 'COMMENT',
+                    message: `${currentUser.name} commented on Ticket #${ticket.number}`
+                });
+            }
+        }
 
         // Optimistic Update
         setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, comments: updatedComments } : t));
@@ -1749,11 +1857,24 @@ export default function App() {
                             {currentView === 'board' && 'Kanban Board'}
                         </h1>
                     </div>
-                    <div className="flex items-center space-x-4">
-                        <button onClick={toggleTheme} className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors">
+                    <div className="flex items-center space-x-3">
+                        <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-slate-700 transition-colors">
                             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                         </button>
-                        <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 hidden sm:block"></div>
+
+                        <NotificationBell
+                            notifications={notifications}
+                            onRead={(id) => {
+                                setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+                                StorageService.markNotificationRead(id);
+                            }}
+                            onNavigate={(ticketId) => {
+                                setSelectedTicketId(ticketId);
+                                handleViewChange('detail');
+                            }}
+                        />
+
+                        <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 mx-2 hidden md:block"></div>
                         <div className="text-right hidden sm:block">
                             <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                                 {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
