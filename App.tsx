@@ -632,8 +632,21 @@ export default function App() {
     // --- COMPUTED DASHBOARD ---
     const dashboardStats = useMemo(() => {
         const total = tickets.length;
-        const closed = tickets.filter(t => t.status === TicketStatus.CLOSED || t.status === TicketStatus.RESOLVED || t.status === TicketStatus.PARTIALLY_CLOSED).length;
+        // Filter tickets that are considered "resolved" for calculation purposes
+        const resolvedTickets = tickets.filter(t => t.status === TicketStatus.CLOSED || t.status === TicketStatus.RESOLVED || t.status === TicketStatus.PARTIALLY_CLOSED);
+        const closed = resolvedTickets.length;
         const reopened = tickets.filter(t => t.status === TicketStatus.REOPENED).length;
+
+        // Calculate Average Resolution Time (in Hours)
+        // using updatedAt as a proxy for resolution time for resolved tickets
+        const totalResolutionTimeMs = resolvedTickets.reduce((acc, t) => {
+            const duration = t.updatedAt.getTime() - t.createdAt.getTime();
+            return acc + duration;
+        }, 0);
+
+        const avgResolution = closed > 0
+            ? Math.round((totalResolutionTimeMs / closed) / (1000 * 60 * 60))
+            : 0;
 
         const statusCounts = tickets.reduce((acc, t) => {
             acc[t.status] = (acc[t.status] || 0) + 1;
@@ -671,6 +684,7 @@ export default function App() {
             closed,
             closedPct: total ? Math.round((closed / total) * 100) : 0,
             reopenedPct: total ? Math.round((reopened / total) * 100) : 0,
+            avgResolution, // Added computed metric
             statusDistribution,
             moduleDistribution,
             statusCounts,
@@ -767,7 +781,7 @@ export default function App() {
                             { label: 'Total Tickets', value: dashboardStats.total, icon: TicketIcon, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
                             { label: 'Closed Rate', value: `${dashboardStats.closedPct}%`, icon: CheckCircle2, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
                             { label: 'Reopen Rate', value: `${dashboardStats.reopenedPct}%`, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
-                            { label: 'Avg Resolution', value: '18 hrs', icon: Clock, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+                            { label: 'Avg Resolution', value: `${dashboardStats.avgResolution} hrs`, icon: Clock, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
                         ].map((stat, i) => (
                             <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center justify-between hover:shadow-md transition-all">
                                 <div>
