@@ -30,6 +30,19 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
     const [editingSlaId, setEditingSlaId] = useState<number | null>(null);
     const [editingSlaHours, setEditingSlaHours] = useState<number>(0);
 
+    // Custom Delete Confirmation State
+    const [deleteConfirm, setDeleteConfirm] = useState<{
+        isOpen: boolean;
+        id: number | null;
+        type: 'status' | 'module' | null;
+        label: string;
+    }>({
+        isOpen: false,
+        id: null,
+        type: null,
+        label: ''
+    });
+
     useEffect(() => {
         setStatuses(initialStatuses);
         setModules(initialModules);
@@ -48,59 +61,93 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                     colorHex: newItemColor,
                     sortOrder: newItemSortOrder
                 });
-                if (newStatus) {
-                    setStatuses(prev => [...prev, newStatus].sort((a, b) => a.sortOrder - b.sortOrder));
-                    onUpdate();
-                    setShowAddModal(false);
-                    resetForm();
-                } else {
-                    setError("Failed to create status.");
-                }
+                setStatuses(prev => [...prev, newStatus].sort((a, b) => a.sortOrder - b.sortOrder));
+                onUpdate();
+                setShowAddModal(false);
+                resetForm();
             } else if (activeTab === 'modules') {
                 const newModule = await StorageService.createModule({
                     label: newItemLabel,
                     sortOrder: newItemSortOrder
                 });
-                if (newModule) {
-                    setModules(prev => [...prev, newModule].sort((a, b) => a.sortOrder - b.sortOrder));
-                    onUpdate();
-                    setShowAddModal(false);
-                    resetForm();
-                } else {
-                    setError("Failed to create module.");
-                }
+                setModules(prev => [...prev, newModule].sort((a, b) => a.sortOrder - b.sortOrder));
+                onUpdate();
+                setShowAddModal(false);
+                resetForm();
             }
-        } catch (err) {
-            setError("An error occurred.");
+        } catch (err: any) {
+            setError(err.message || "An error occurred.");
             console.error(err);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm("Are you sure you want to delete this item? This might affect existing tickets.")) return;
+    const handleDelete = async (id: number, type: 'status' | 'module', label: string, isDefault?: boolean) => {
+        if (isDefault) {
+            setError(`Cannot delete '${label}' because it is a system default.`);
+            return;
+        }
+
         setIsLoading(true);
+        setError(null);
+
         try {
-            if (activeTab === 'statuses') {
+            // Check dependencies
+            const count = await StorageService.checkDependency(type, label);
+
+            if (count > 0) {
+                setError(`Cannot delete '${label}'. It is currently used by ${count} tickets. Please reassign them first.`);
+                setIsLoading(false);
+                return;
+            }
+
+            // If safe, open custom confirmation modal
+            setDeleteConfirm({
+                isOpen: true,
+                id,
+                type,
+                label
+            });
+            setIsLoading(false);
+
+        } catch (err: any) {
+            setError(err.message || "An error occurred during dependency check.");
+            console.error(err);
+            setIsLoading(false);
+        }
+    };
+
+    const executeDelete = async () => {
+        if (!deleteConfirm.id || !deleteConfirm.type) return;
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            const { id, type } = deleteConfirm;
+
+            if (type === 'status') {
                 const success = await StorageService.deleteStatus(id);
                 if (success) {
                     setStatuses(prev => prev.filter(s => s.id !== id));
                     onUpdate();
+                    setDeleteConfirm(prev => ({ ...prev, isOpen: false }));
                 } else {
-                    setError("Failed to delete status.");
+                    setError(`Failed to delete status '${deleteConfirm.label}'. It might not exist or an error occurred.`);
                 }
-            } else if (activeTab === 'modules') {
+            } else {
                 const success = await StorageService.deleteModule(id);
                 if (success) {
                     setModules(prev => prev.filter(m => m.id !== id));
                     onUpdate();
+                    setDeleteConfirm(prev => ({ ...prev, isOpen: false }));
                 } else {
-                    setError("Failed to delete module.");
+                    setError(`Failed to delete module '${deleteConfirm.label}'.`);
                 }
             }
-        } catch (err) {
-            setError("An error occurred.");
+        } catch (err: any) {
+            setError(err.message || "An error occurred during deletion.");
             console.error(err);
         } finally {
             setIsLoading(false);
@@ -201,7 +248,14 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                                             <span className="text-xs text-gray-500 dark:text-gray-400">Order: {status.sortOrder}</span>
                                         </div>
                                     </div>
-                                    <button onClick={() => handleDelete(status.id)} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">
+                                    <button
+                                        onClick={() => handleDelete(status.id, 'status', status.label, status.isDefault)}
+                                        disabled={status.isDefault}
+                                        className={`p-2 rounded-full transition-colors ${status.isDefault
+                                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                                            : 'text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                            }`}
+                                    >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -218,7 +272,14 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                                             <span className="text-xs text-gray-500 dark:text-gray-400">Order: {module.sortOrder}</span>
                                         </div>
                                     </div>
-                                    <button onClick={() => handleDelete(module.id)} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">
+                                    <button
+                                        onClick={() => handleDelete(module.id, 'module', module.label, module.isDefault)}
+                                        disabled={module.isDefault}
+                                        className={`p-2 rounded-full transition-colors ${module.isDefault
+                                            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                                            : 'text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                            }`}
+                                    >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -334,6 +395,36 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                             <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
                             <button onClick={handleAdd} disabled={!newItemLabel.trim() || isLoading} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
                                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />} Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Delete Confirmation Modal */}
+            {deleteConfirm.isOpen && (
+                <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200 dark:border-slate-600 animate-scale-in">
+                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 mx-auto mb-4">
+                            <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                        </div>
+                        <h4 className="text-lg font-bold mb-2 text-center text-gray-900 dark:text-white">Delete Item?</h4>
+                        <p className="text-center text-gray-500 dark:text-gray-400 mb-6">
+                            Are you sure you want to delete <strong>{deleteConfirm.label}</strong>? This action cannot be undone.
+                        </p>
+
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+                                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={executeDelete}
+                                className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-md flex items-center"
+                            >
+                                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />} Delete
                             </button>
                         </div>
                     </div>

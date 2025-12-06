@@ -104,6 +104,7 @@ export interface StatusConfig {
   label: string;
   colorHex: string;
   sortOrder: number;
+  isDefault?: boolean;
 }
 
 export interface SlaConfig {
@@ -117,6 +118,7 @@ export interface ModuleConfig {
   id: number;
   label: string;
   sortOrder: number;
+  isDefault?: boolean;
 }
 
 export interface MasterData {

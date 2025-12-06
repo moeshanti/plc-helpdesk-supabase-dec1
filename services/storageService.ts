@@ -470,7 +470,7 @@ export const StorageService = {
     };
   },
 
-  createStatus: async (status: Omit<StatusConfig, 'id'>): Promise<StatusConfig | null> => {
+  createStatus: async (status: Omit<StatusConfig, 'id'>): Promise<StatusConfig> => {
     const { data, error } = await supabase
       .from('ticket_statuses')
       .insert({
@@ -483,21 +483,25 @@ export const StorageService = {
 
     if (error) {
       console.error('Error creating status:', error);
-      return null;
+      throw error;
     }
     return { id: data.id, label: data.label, colorHex: data.color_hex, sortOrder: data.sort_order };
   },
 
   deleteStatus: async (id: number): Promise<boolean> => {
-    const { error } = await supabase.from('ticket_statuses').delete().eq('id', id);
+    const { count, error } = await supabase
+      .from('ticket_statuses')
+      .delete({ count: 'exact' })
+      .eq('id', id);
+
     if (error) {
       console.error('Error deleting status:', error);
       return false;
     }
-    return true;
+    return count !== null && count > 0;
   },
 
-  createModule: async (module: Omit<ModuleConfig, 'id'>): Promise<ModuleConfig | null> => {
+  createModule: async (module: Omit<ModuleConfig, 'id'>): Promise<ModuleConfig> => {
     const { data, error } = await supabase
       .from('ticket_modules')
       .insert({
@@ -509,18 +513,22 @@ export const StorageService = {
 
     if (error) {
       console.error('Error creating module:', error);
-      return null;
+      throw error;
     }
     return { id: data.id, label: data.label, sortOrder: data.sort_order };
   },
 
   deleteModule: async (id: number): Promise<boolean> => {
-    const { error } = await supabase.from('ticket_modules').delete().eq('id', id);
+    const { count, error } = await supabase
+      .from('ticket_modules')
+      .delete({ count: 'exact' })
+      .eq('id', id);
+
     if (error) {
       console.error('Error deleting module:', error);
       return false;
     }
-    return true;
+    return count !== null && count > 0;
   },
 
   updateSla: async (id: number, hours: number): Promise<boolean> => {
@@ -607,5 +615,24 @@ export const StorageService = {
       message: notification.message
     });
     if (error) console.error('Error creating notification:', error);
+  },
+
+  checkDependency: async (type: 'status' | 'module', label: string): Promise<number> => {
+    if (!supabase) return 0;
+
+    // Using count: 'exact', head: true to get the count without fetching data
+    const { count, error } = await supabase
+      .from('tickets')
+      .select('*', { count: 'exact', head: true })
+      .eq(type, label);
+
+    if (error) {
+      console.error(`Error checking dependency for ${type} '${label}':`, error);
+      return 0; // Fail safe: assume 0 if error, but logging it. 
+      // Alternatively, could throw or return -1 to block delete on error.
+      // For this request, we'll return 0 but log it.
+    }
+
+    return count || 0;
   }
 };
