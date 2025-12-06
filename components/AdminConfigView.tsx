@@ -19,6 +19,14 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
     const [slas, setSlas] = useState<SlaConfig[]>(initialSlas);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+    // Helper to scroll to top
+    const scrollToTop = () => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
 
     // Modal State
     const [showAddModal, setShowAddModal] = useState(false);
@@ -77,6 +85,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
             }
         } catch (err: any) {
             setError(err.message || "An error occurred.");
+            scrollToTop();
             console.error(err);
         } finally {
             setIsLoading(false);
@@ -86,6 +95,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
     const handleDelete = async (id: number, type: 'status' | 'module', label: string, isDefault?: boolean) => {
         if (isDefault) {
             setError(`Cannot delete '${label}' because it is a system default.`);
+            scrollToTop();
             return;
         }
 
@@ -98,6 +108,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
 
             if (count > 0) {
                 setError(`Cannot delete '${label}'. It is currently used by ${count} tickets. Please reassign them first.`);
+                scrollToTop();
                 setIsLoading(false);
                 return;
             }
@@ -113,6 +124,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
 
         } catch (err: any) {
             setError(err.message || "An error occurred during dependency check.");
+            scrollToTop();
             console.error(err);
             setIsLoading(false);
         }
@@ -135,6 +147,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                     setDeleteConfirm(prev => ({ ...prev, isOpen: false }));
                 } else {
                     setError(`Failed to delete status '${deleteConfirm.label}'. It might not exist or an error occurred.`);
+                    scrollToTop();
                 }
             } else {
                 const success = await StorageService.deleteModule(id);
@@ -144,6 +157,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                     setDeleteConfirm(prev => ({ ...prev, isOpen: false }));
                 } else {
                     setError(`Failed to delete module '${deleteConfirm.label}'.`);
+                    scrollToTop();
                 }
             }
         } catch (err: any) {
@@ -216,7 +230,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6">
                     {error && (
                         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg flex items-center">
                             <AlertCircle className="w-5 h-5 mr-2" /> {error}
