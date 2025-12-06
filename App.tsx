@@ -98,6 +98,8 @@ import { AdminConfigView } from './components/AdminConfigView';
 import { StatusBadge } from './components/StatusBadge';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
+import { Skeleton } from './components/ui/Skeleton';
+import { DashboardSkeleton, TicketListSkeleton, KanbanSkeleton } from './components/ViewSkeletons';
 import { TicketListView } from './components/TicketListView';
 import { ReactMediaRecorder } from "react-media-recorder";
 import { analyzeTicketImages, analyzeTicketVideo } from './services/geminiService';
@@ -1709,6 +1711,7 @@ export default function App() {
                             <p className="text-sm text-gray-500">{currentUser?.email} • <span className="uppercase text-xs font-bold bg-gray-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">{currentUser?.role}</span></p>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -1716,11 +1719,34 @@ export default function App() {
 
     if (isLoading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
-                <div className="text-center">
-                    <Loader2 className="h-10 w-10 animate-spin text-brand-600 mx-auto mb-4" />
-                    <p className="text-gray-600 dark:text-gray-300">Loading HelpDesk...</p>
-                </div>
+            <div className={`flex h-screen bg-slate-50 dark:bg-slate-900 ${isDark ? 'dark' : ''}`}>
+                {/* Sidebar Skeleton */}
+                <aside className="w-64 bg-brand-900 hidden lg:flex flex-col">
+                    <div className="p-6">
+                        <div className="h-8 w-32 bg-brand-800 rounded-lg animate-pulse" />
+                    </div>
+                    <div className="flex-1 px-3 space-y-2 mt-4">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                            <div key={i} className="h-12 w-full bg-brand-800/50 rounded-xl animate-pulse" />
+                        ))}
+                    </div>
+                </aside>
+
+                <main className="flex-1 p-4 sm:p-8 overflow-hidden">
+                    {/* Header Skeleton */}
+                    <div className="h-16 mb-8 flex justify-between items-center">
+                        <Skeleton className="h-8 w-48" />
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                    </div>
+
+                    {/* View Specific Skeletons */}
+                    {currentView === 'dashboard' && <DashboardSkeleton />}
+                    {currentView === 'list' && <TicketListSkeleton />}
+                    {currentView === 'board' && <KanbanSkeleton />}
+
+                    {/* Fallback for other views */}
+                    {['create', 'detail', 'settings', 'reports'].includes(currentView) && <DashboardSkeleton />}
+                </main>
             </div>
         );
     }
