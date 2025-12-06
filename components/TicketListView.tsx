@@ -5,6 +5,7 @@ import { StatusBadge } from './StatusBadge'; // Assuming this exists or is expor
 import { PriorityBadge } from './PriorityBadge'; // Need to check if this exists
 import { SlaTimer } from './SlaTimer';
 import { X, Search } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface TicketListViewProps {
     tickets: Ticket[];
@@ -100,12 +101,14 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                 </select>
 
                 {(filters.status || filters.priority || filters.module || filters.assignee) && (
-                    <button
+                    <motion.button
                         onClick={() => setFilters({ status: '', priority: '', assignee: '', module: '' })}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         className="ml-auto text-sm text-red-500 hover:text-red-700 font-medium flex items-center"
                     >
                         <X className="h-3 w-3 mr-1" /> Clear Filters
-                    </button>
+                    </motion.button>
                 )}
             </div>
 
@@ -123,10 +126,17 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                        {tickets.map(ticket => {
+                        {tickets.map((ticket, index) => {
                             const assignee = users.find(u => u.id === ticket.assigneeId);
                             return (
-                                <tr key={ticket.id} className="hover:bg-blue-50/50 dark:hover:bg-slate-700/50 transition-colors group cursor-pointer" onClick={() => { setSelectedTicketId(ticket.id); setCurrentView('detail'); }}>
+                                <motion.tr
+                                    key={ticket.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: index * 0.05 }}
+                                    className="hover:bg-blue-50/50 dark:hover:bg-slate-700/50 transition-colors group cursor-pointer"
+                                    onClick={() => { setSelectedTicketId(ticket.id); setCurrentView('detail'); }}
+                                >
                                     <td className="p-4 text-sm font-mono font-medium text-gray-500 dark:text-gray-400">{ticket.number}</td>
                                     <td className="p-4">
                                         <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">{ticket.title}</p>
@@ -146,7 +156,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                                             </div>
                                         ) : <span className="text-xs text-gray-400 italic">Unassigned</span>}
                                     </td>
-                                </tr>
+                                </motion.tr>
                             );
                         })}
                         {tickets.length === 0 && (

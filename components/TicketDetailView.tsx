@@ -8,6 +8,7 @@ import {
     Ticket, User, UserRole, TicketStatus, TicketPriority, RelationType,
     Attachment, Comment, TicketRelation, MasterData
 } from '../types';
+import { motion } from 'framer-motion';
 import { StorageService } from '../services/storageService';
 import { analyzeTicketImages, ImagePart } from '../services/geminiService';
 import { StatusBadge } from './StatusBadge';
@@ -718,9 +719,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                                     </div>
                                 )}
                             </div>
-                            <button
+                            <motion.button
                                 onClick={handlePostComment}
                                 disabled={(!commentText.trim() && commentFiles.length === 0) || isSubmitting}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
                                 className="p-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {isSubmitting ? (
@@ -728,7 +731,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                                 ) : (
                                     <ArrowRight className="h-5 w-5" />
                                 )}
-                            </button>
+                            </motion.button>
                         </div>
                     </div>
                 </div>
@@ -768,20 +771,24 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                                 </select>
                             </div>
                             {!isResolvedOrClosed && (
-                                <button
+                                <motion.button
                                     onClick={() => setShowResolveModal(true)}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center justify-center"
                                 >
                                     <CheckCircle2 className="h-4 w-4 mr-2" /> Resolve Ticket
-                                </button>
+                                </motion.button>
                             )}
                             {isResolvedOrClosed && (
-                                <button
+                                <motion.button
                                     onClick={() => setShowReopenModal(true)}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     className="w-full py-2 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl text-sm font-bold transition-colors flex items-center justify-center"
                                 >
                                     <RefreshCw className="h-4 w-4 mr-2" /> Re-Open Ticket
-                                </button>
+                                </motion.button>
                             )}
                         </div>
                     </div>

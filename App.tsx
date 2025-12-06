@@ -96,7 +96,8 @@ import { ReportsView } from './components/ReportsView';
 import { SmartInputTabs, SmartInputTab } from './components/SmartInputTabs';
 import { AdminConfigView } from './components/AdminConfigView';
 import { StatusBadge } from './components/StatusBadge';
-import { PriorityBadge } from './components/PriorityBadge';
+import { AnimatePresence, motion } from 'framer-motion';
+import PageTransition from './components/PageTransition';
 import { TicketListView } from './components/TicketListView';
 import { ReactMediaRecorder } from "react-media-recorder";
 import { analyzeTicketImages, analyzeTicketVideo } from './services/geminiService';
@@ -953,12 +954,14 @@ export default function App() {
                         <h3 className="text-lg font-bold mb-2 flex items-center"><Zap className="h-5 w-5 mr-2" /> Quick Actions</h3>
                         <p className="text-brand-100 text-sm mb-6">Need assistance with 1C ERP? Log a ticket instantly.</p>
                     </div>
-                    <button
+                    <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => handleViewChange('create')}
                         className="w-full bg-white text-brand-700 py-3 rounded-xl font-bold shadow-md hover:bg-brand-50 transition-colors flex items-center justify-center"
                     >
                         <Plus className="h-5 w-5 mr-2" /> Log New Ticket
-                    </button>
+                    </motion.button>
                 </div>
             </div>
 
@@ -1464,13 +1467,15 @@ export default function App() {
                                                         <video src={mediaBlobUrl} controls className="w-full rounded-lg mb-4" />
                                                         <div className="flex justify-center gap-4">
                                                             <button onClick={() => { startRecording(); setRecordedVideoBlob(null); }} className="text-white/70 hover:text-white text-sm underline">Record Again</button>
-                                                            <button
+                                                            <motion.button
+                                                                whileHover={{ scale: 1.02 }}
+                                                                whileTap={{ scale: 0.95 }}
                                                                 onClick={() => handleAnalyze(mediaBlobUrl)}
                                                                 className="bg-white text-indigo-600 px-6 py-2 rounded-full font-bold hover:bg-indigo-50 transition-colors"
                                                                 disabled={isAnalyzing}
                                                             >
                                                                 {isAnalyzing ? 'Analyzing...' : 'Analyze Recording'}
-                                                            </button>
+                                                            </motion.button>
                                                         </div>
                                                     </div>
                                                 ) : (
@@ -1488,7 +1493,9 @@ export default function App() {
                             </div>
 
                             {activeTab !== 'record-video' && (
-                                <button
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.95 }}
                                     onClick={() => handleAnalyze()}
                                     disabled={isAnalyzing || (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)}
                                     className={`px-8 py-6 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center transition-all min-w-[200px] w-full md:w-auto
@@ -1501,7 +1508,7 @@ export default function App() {
                                 `}
                                 >
                                     {isAnalyzing ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</> : 'Analyze Now'}
-                                </button>
+                                </motion.button>
                             )}
                         </div>
                     </div>
@@ -1635,13 +1642,15 @@ export default function App() {
 
                     <div className="pt-8 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-4">
                         <button onClick={() => handleViewChange('list')} className="px-8 py-4 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 rounded-2xl transition-colors">Cancel</button>
-                        <button
+                        <motion.button
                             onClick={handleSubmit}
                             disabled={!title || !description || isSubmitting}
-                            className="px-10 py-4 bg-brand-600 text-white font-bold rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95 text-lg"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="px-10 py-4 bg-brand-600 text-white font-bold rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg"
                         >
                             {isSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Creating...</> : 'Create Ticket'}
-                        </button>
+                        </motion.button>
                     </div>
                 </div>
             </div>
@@ -1795,30 +1804,34 @@ export default function App() {
                 <nav className="flex-1 px-3 py-4 space-y-2">
 
                     {sidebarItems.map((item) => (
-                        <button
+                        <motion.button
                             key={item.id}
                             onClick={() => { handleViewChange(item.id as any); setIsMobileMenuOpen(false); }}
+                            whileHover={{ x: 4, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                            whileTap={{ scale: 0.98 }}
                             className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 group
                         ${currentView === item.id
                                     ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/20'
-                                    : 'text-brand-100 hover:bg-white/5 hover:text-white'
+                                    : 'text-brand-100 hover:text-white'
                                 } ${!isSidebarOpen && 'lg:justify-center'}`}
                         >
                             <item.icon className={`h-5 w-5 ${isSidebarOpen ? 'mr-3' : 'lg:mr-0 mr-3'} ${currentView === item.id ? 'text-blue-300' : 'text-brand-300 group-hover:text-white'}`} />
                             <span className={`${!isSidebarOpen && 'lg:hidden'}`}>{item.label}</span>
-                        </button>
+                        </motion.button>
                     ))}
                 </nav>
 
                 <div className="p-4 mt-auto">
-                    <button
+                    <motion.button
                         onClick={() => { handleViewChange('settings'); setIsMobileMenuOpen(false); }}
+                        whileHover={{ x: 4, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                        whileTap={{ scale: 0.98 }}
                         className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 mb-2
-                        ${currentView === 'settings' ? 'bg-white/10 text-white' : 'text-brand-100 hover:bg-white/5'}`}
+                        ${currentView === 'settings' ? 'bg-white/10 text-white' : 'text-brand-100'}`}
                     >
                         <Settings className={`h-5 w-5 ${isSidebarOpen ? 'mr-3' : 'lg:mr-0 mx-auto'}`} />
                         <span className={`${!isSidebarOpen && 'lg:hidden'}`}>Settings</span>
-                    </button>
+                    </motion.button>
 
                     <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'lg:justify-center justify-between'} bg-brand-950/30 p-3 rounded-xl border border-brand-700/50`}>
                         <div className={`flex items-center overflow-hidden ${!isSidebarOpen && 'lg:hidden'}`}>
@@ -1889,50 +1902,76 @@ export default function App() {
 
                 {/* Scrollable View Area */}
                 <div className="flex-1 overflow-auto p-4 sm:p-8 custom-scrollbar">
-                    {currentView === 'dashboard' && <DashboardView />}
-                    {currentView === 'list' && (
-                        <TicketListView
-                            tickets={visibleTickets.filter(t => {
-                                if (!searchQuery) return true;
-                                const query = searchQuery.toLowerCase();
-                                return (
-                                    t.title.toLowerCase().includes(query) ||
-                                    t.number.toLowerCase().includes(query) ||
-                                    (t.description && t.description.toLowerCase().includes(query))
-                                );
-                            })}
-                            users={users}
-                            masterData={masterData}
-                            filters={filters}
-                            setFilters={setFilters}
-                            setSelectedTicketId={setSelectedTicketId}
-                            setCurrentView={handleViewChange}
-                            searchQuery={searchQuery}
-                            setSearchQuery={setSearchQuery}
-                        />
-                    )}
-                    {currentView === 'board' && <TicketKanbanView tickets={tickets} onUpdateTicket={handleUpdateTicket} onTicketClick={(id) => { setSelectedTicketId(id); handleViewChange('detail'); }} />}
-                    {currentView === 'reports' && <ReportsView tickets={tickets} />}
-                    {currentView === 'create' && <CreateTicketViewWrapper />}
-                    {currentView === 'detail' && selectedTicket && (
-                        <TicketDetailView
-                            key={selectedTicket.id}
-                            ticket={selectedTicket}
-                            tickets={tickets}
-                            currentUser={currentUser}
-                            users={users}
-                            masterData={masterData}
-                            onClose={() => handleViewChange('list')}
-                            onUpdateTicket={handleUpdateTicket}
-                            onTicketUpdated={(updatedTicket) => {
-                                setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
-                            }}
-                            onSelectTicket={(id) => {
-                                setSelectedTicketId(id);
-                            }}
-                        />
-                    )}
-                    {currentView === 'settings' && <SettingsView />}
+                    <AnimatePresence mode="wait">
+                        {currentView === 'dashboard' && (
+                            <PageTransition key="dashboard">
+                                <DashboardView />
+                            </PageTransition>
+                        )}
+                        {currentView === 'list' && (
+                            <PageTransition key="list">
+                                <TicketListView
+                                    tickets={visibleTickets.filter(t => {
+                                        if (!searchQuery) return true;
+                                        const query = searchQuery.toLowerCase();
+                                        return (
+                                            t.title.toLowerCase().includes(query) ||
+                                            t.number.toLowerCase().includes(query) ||
+                                            (t.description && t.description.toLowerCase().includes(query))
+                                        );
+                                    })}
+                                    users={users}
+                                    masterData={masterData}
+                                    filters={filters}
+                                    setFilters={setFilters}
+                                    setSelectedTicketId={setSelectedTicketId}
+                                    setCurrentView={handleViewChange}
+                                    searchQuery={searchQuery}
+                                    setSearchQuery={setSearchQuery}
+                                />
+                            </PageTransition>
+                        )}
+                        {currentView === 'board' && (
+                            <PageTransition key="board">
+                                <TicketKanbanView tickets={tickets} onUpdateTicket={handleUpdateTicket} onTicketClick={(id) => { setSelectedTicketId(id); handleViewChange('detail'); }} />
+                            </PageTransition>
+                        )}
+                        {currentView === 'reports' && (
+                            <PageTransition key="reports">
+                                <ReportsView tickets={tickets} />
+                            </PageTransition>
+                        )}
+                        {currentView === 'create' && (
+                            <PageTransition key="create">
+                                <CreateTicketViewWrapper />
+                            </PageTransition>
+                        )}
+                        {currentView === 'detail' && selectedTicket && (
+                            <PageTransition key="detail">
+                                <TicketDetailView
+                                    key={selectedTicket.id}
+                                    ticket={selectedTicket}
+                                    tickets={tickets}
+                                    currentUser={currentUser}
+                                    users={users}
+                                    masterData={masterData}
+                                    onClose={() => handleViewChange('list')}
+                                    onUpdateTicket={handleUpdateTicket}
+                                    onTicketUpdated={(updatedTicket) => {
+                                        setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+                                    }}
+                                    onSelectTicket={(id) => {
+                                        setSelectedTicketId(id);
+                                    }}
+                                />
+                            </PageTransition>
+                        )}
+                        {currentView === 'settings' && (
+                            <PageTransition key="settings">
+                                <SettingsView />
+                            </PageTransition>
+                        )}
+                    </AnimatePresence>
                 </div>
             </main>
 
