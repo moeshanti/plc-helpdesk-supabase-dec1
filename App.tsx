@@ -57,7 +57,8 @@ import {
     Kanban,
     List,
     BarChart3,
-    PieChart as PieChartIcon
+    PieChart as PieChartIcon,
+    Plus
 } from 'lucide-react';
 import { withTimeout } from './utils/timeout';
 import { SlaHealthCard } from './components/SlaHealthCard';
@@ -363,7 +364,7 @@ export default function App() {
         { id: 'list', icon: TicketIcon, label: 'All Tickets' },
         { id: 'board', icon: Kanban, label: 'Board View' },
         { id: 'reports', icon: FileSpreadsheet, label: 'Reports' },
-        { id: 'create', icon: Wand2, label: 'New Ticket' },
+        { id: 'create', icon: Plus, label: 'New Ticket' },
     ];
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
