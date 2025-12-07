@@ -269,7 +269,7 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                                 itemStyle={{ color: '#6366f1' }}
                                 cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }}
                             />
-                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={false} />
+                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -1189,14 +1189,16 @@ export default function App() {
                     setFiles(prev => [...prev, ...newFiles]);
                 } else if (activeTab === 'upload-video') {
                     const file = e.target.files[0];
+                    // Always clear error and previous file when selecting new one
+                    setUploadError(null);
+                    setVideoFile(null);
+
                     if (file) {
-                        if (file.size > 1) {
+                        if (file.size > 100 * 1024 * 1024) {
                             setUploadError("Video file size must be less than 100MB.");
-                            e.target.value = ''; // Reset on error
-                            setVideoFile(null);
+                            e.target.value = ''; // Reset input to allow re-selecting same oversized file if needed
                             return;
                         }
-                        setUploadError(null);
                         setVideoFile(file);
                     }
                 }
