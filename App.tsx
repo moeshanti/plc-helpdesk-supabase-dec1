@@ -85,7 +85,7 @@ import {
     User, UserRole, Ticket, TicketStatus, TicketPriority, RelationType, Attachment, Comment, TicketRelation, StatusConfig,
     ModuleConfig,
     SlaConfig,
-    Notification as AppNotification
+    Notification as AppNotification, MasterData, AppSettings
 } from './types';
 import { ImagePart } from './services/geminiService';
 import { StorageService } from './services/storageService';
@@ -95,6 +95,8 @@ import { TicketKanbanView } from './components/TicketKanbanView';
 import { ReportsView } from './components/ReportsView';
 import { SmartInputTabs, SmartInputTab } from './components/SmartInputTabs';
 import { AdminConfigView } from './components/AdminConfigView';
+import { BrandLogo } from './components/BrandLogo';
+import { EditProfileModal } from './components/EditProfileModal';
 import { StatusBadge } from './components/StatusBadge';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
@@ -119,6 +121,22 @@ const MOCK_TREND_DATA = [
 
 // --- HELPER COMPONENTS ---
 
+const VideoPreview = ({ stream }: { stream: MediaStream | null }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+        }
+    }, [stream]);
+
+    if (!stream) {
+        return null;
+    }
+
+    return <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />;
+};
+
 const getStatusColor = (status: TicketStatus, isDark: boolean) => {
     switch (status) {
         case TicketStatus.OPEN: return '#3b82f6'; // Blue
@@ -127,7 +145,7 @@ const getStatusColor = (status: TicketStatus, isDark: boolean) => {
         case TicketStatus.IN_PROGRESS: return '#eab308'; // Yellow
         case TicketStatus.PENDING_USER: return '#f97316'; // Orange
         case TicketStatus.USER_ACCEPTANCE: return '#06b6d4'; // Cyan
-        case TicketStatus.RESOLVED: return '#22c55e'; // Green
+        case TicketStatus.RESOLVED: return '#22c5e'; // Green
         case TicketStatus.PARTIALLY_CLOSED: return '#64748b'; // Slate
         case TicketStatus.CLOSED: return isDark ? '#4b5563' : '#374151'; // Gray
         case TicketStatus.REOPENED: return '#ec4899'; // Pink
@@ -309,7 +327,9 @@ export default function App() {
 
     const [showUserSwitcher, setShowUserSwitcher] = useState(false);
     const [isDark, setIsDark] = useState(false);
+    const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
     const [showAdminConfig, setShowAdminConfig] = useState(false);
+    const [showEditProfile, setShowEditProfile] = useState(false);
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
     // Master Data State
@@ -446,17 +466,28 @@ export default function App() {
                     .then(res => { console.log("Master data fetched"); return res; })
                     .catch(err => { console.error("Master data fetch failed:", err); return { statuses: [], modules: [], slas: [] }; });
 
+                const pAppSettings = withTimeout(StorageService.fetchAppSettings(), 60000, 'fetchAppSettings')
+                    .then(res => { console.log("App settings fetched"); return res; })
+                    .catch(err => { console.error("App settings fetch failed:", err); return null; });
+
                 // Fetch Notifications if user is logged in
                 const pNotifications = currentUser
                     ? StorageService.fetchNotifications(currentUser.id)
                     : Promise.resolve([]);
 
-                const [loadedTickets, loadedUsers, loadedMasterData, loadedNotifications] = await Promise.all([pTickets, pUsers, pMaster, pNotifications]);
+                const [loadedTickets, loadedUsers, loadedMasterData, loadedSettings, loadedNotifications] = await Promise.all([pTickets, pUsers, pMaster, pAppSettings, pNotifications]);
 
                 setTickets(loadedTickets || []);
                 setUsers(loadedUsers || []);
                 setMasterData(loadedMasterData);
+                setAppSettings(loadedSettings);
                 setNotifications(loadedNotifications || []);
+
+                if (loadedSettings?.appName) {
+                    document.title = loadedSettings.appName;
+                } else {
+                    document.title = "PLC HelpDesk";
+                }
 
                 if (!currentUser && loadedUsers && loadedUsers.length > 0) {
                     console.log("Setting initial user:", loadedUsers[0].name);
@@ -1203,8 +1234,8 @@ export default function App() {
                     result = await analyzeTicketVideo(base64, videoFile.type, "1C:Enterprise", module);
                 } else if (activeTab === 'record-video' && mediaBlobUrl) {
                     const blob = await fetch(mediaBlobUrl).then(r => r.blob());
-                    if (blob.size > 4 * 1024 * 1024) {
-                        alert("Recording is too large (>4MB) for AI analysis. Please record a shorter clip (max 5-10 seconds).");
+                    if (blob.size > 50 * 1024 * 1024) {
+                        alert("Recording is too large (>50MB) for AI analysis. Please record a shorter clip.");
                         setIsAnalyzing(false);
                         return;
                     }
@@ -1451,45 +1482,73 @@ export default function App() {
                                 {activeTab === 'record-video' && (
                                     <ReactMediaRecorder
                                         screen
-                                        onStop={(blobUrl, blob) => setRecordedVideoBlob(blob)}
-                                        render={({ status, startRecording, stopRecording, mediaBlobUrl }) => (
-                                            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-white/20 rounded-2xl bg-white/5">
-                                                {status === 'recording' ? (
-                                                    <div className="text-center">
-                                                        <div className="animate-pulse flex items-center justify-center mb-4">
-                                                            <div className="w-4 h-4 bg-red-500 rounded-full mr-2"></div>
-                                                            <span className="text-red-400 font-bold">Recording...</span>
+                                        render={({ status, startRecording, stopRecording, mediaBlobUrl, previewStream }) => {
+                                            if (mediaBlobUrl && status === 'stopped') {
+                                                // Convert blob URL to File object for upload
+                                                fetch(mediaBlobUrl).then(r => r.blob()).then(blob => {
+                                                    const file = new File([blob], "recorded-video.mp4", { type: "video/mp4" });
+                                                    setVideoFile(file);
+                                                });
+                                            }
+
+                                            return (
+                                                <div className="flex flex-col items-center justify-center space-y-4">
+                                                    {status === 'recording' ? (
+                                                        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                                                            <div className="relative">
+                                                                <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
+                                                                <div className="absolute top-0 left-0 w-4 h-4 rounded-full bg-red-500 animate-ping opacity-75"></div>
+                                                            </div>
+                                                            <p className="text-white/70 font-medium animate-pulse">Recording...</p>
                                                         </div>
-                                                        <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-full font-bold transition-colors">
-                                                            Stop Recording
-                                                        </button>
-                                                    </div>
-                                                ) : mediaBlobUrl ? (
-                                                    <div className="w-full max-w-sm">
-                                                        <video src={mediaBlobUrl} controls className="w-full rounded-lg mb-4" />
-                                                        <div className="flex justify-center gap-4">
-                                                            <button onClick={() => { startRecording(); setRecordedVideoBlob(null); }} className="text-white/70 hover:text-white text-sm underline">Record Again</button>
-                                                            <motion.button
-                                                                whileHover={{ scale: 1.02 }}
-                                                                whileTap={{ scale: 0.95 }}
-                                                                onClick={() => handleAnalyze(mediaBlobUrl)}
-                                                                className="bg-white text-indigo-600 px-6 py-2 rounded-full font-bold hover:bg-indigo-50 transition-colors"
-                                                                disabled={isAnalyzing}
-                                                            >
-                                                                {isAnalyzing ? 'Analyzing...' : 'Analyze Recording'}
-                                                            </motion.button>
+                                                    ) : mediaBlobUrl ? (
+                                                        <video src={mediaBlobUrl} controls className="w-full max-w-md rounded-2xl border border-white/20 shadow-2xl" />
+                                                    ) : null}
+
+                                                    <div className="flex flex-col items-center">
+                                                        <div className="flex items-center space-x-4">
+                                                            {status !== 'recording' && !mediaBlobUrl && (
+                                                                <button
+                                                                    onClick={startRecording}
+                                                                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-red-500/25 flex items-center"
+                                                                >
+                                                                    <Video className="w-5 h-5 mr-2" /> Start Recording
+                                                                </button>
+                                                            )}
+                                                            {status === 'recording' && (
+                                                                <button
+                                                                    onClick={stopRecording}
+                                                                    className="px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold transition-all border border-gray-700 flex items-center"
+                                                                >
+                                                                    <div className="w-4 h-4 bg-red-500 rounded-sm mr-2"></div> Stop Recording
+                                                                </button>
+                                                            )}
+                                                            {status === 'stopped' && mediaBlobUrl && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => handleAnalyze(mediaBlobUrl)}
+                                                                        className="px-6 py-3 bg-white hover:bg-white/90 text-indigo-600 rounded-xl font-bold transition-all shadow-lg hover:shadow-white/25 flex items-center"
+                                                                    >
+                                                                        <Sparkles className="w-5 h-5 mr-2" /> Analyze Recording
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setVideoFile(null);
+                                                                        }}
+                                                                        className="text-sm text-white/50 hover:text-white underline transition-colors px-4 py-3"
+                                                                    >
+                                                                        Record Again
+                                                                    </button>
+                                                                </>
+                                                            )}
                                                         </div>
+                                                        {status !== 'recording' && !mediaBlobUrl && (
+                                                            <p className="text-white/30 text-xs mt-4">Grant camera/mic permissions</p>
+                                                        )}
                                                     </div>
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <button onClick={startRecording} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold transition-colors flex items-center mx-auto">
-                                                            <div className="w-3 h-3 bg-white rounded-full mr-2"></div> Start Recording
-                                                        </button>
-                                                        <p className="text-white/50 text-sm mt-3">Grant camera/mic permissions</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                </div>
+                                            );
+                                        }}
                                     />
                                 )}
                             </div>
@@ -1705,11 +1764,17 @@ export default function App() {
                 <div>
                     <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Account</h3>
                     <div className="flex items-center p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700">
-                        <img src={currentUser?.avatar} alt="" className="w-12 h-12 rounded-full mr-4" />
-                        <div>
+                        <img src={currentUser?.avatar} alt="" className="w-12 h-12 rounded-full mr-4 object-cover" />
+                        <div className="flex-1">
                             <p className="font-bold text-gray-900 dark:text-white">{currentUser?.name}</p>
                             <p className="text-sm text-gray-500">{currentUser?.email} • <span className="uppercase text-xs font-bold bg-gray-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">{currentUser?.role}</span></p>
                         </div>
+                        <button
+                            onClick={() => setShowEditProfile(true)}
+                            className="px-4 py-2 text-sm font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 hover:bg-brand-100 dark:hover:bg-brand-900/40 rounded-lg transition-colors"
+                        >
+                            Edit Profile
+                        </button>
                     </div>
 
                 </div>
@@ -1816,10 +1881,12 @@ export default function App() {
             >
                 <div className="p-6 flex items-center justify-between">
                     <div className={`font-bold text-2xl flex items-center ${!isSidebarOpen && 'justify-center w-full'}`}>
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center mr-2 shadow-lg">
-                            <span className="font-bold text-white">P</span>
-                        </div>
-                        {isSidebarOpen && <span className="tracking-tight">PLC HelpDesk</span>}
+                        <BrandLogo
+                            logoUrl={appSettings?.logoUrl}
+                            name={appSettings?.appName || "PLC HelpDesk"}
+                            isCollapsed={!isSidebarOpen}
+                            className="text-white"
+                        />
                     </div>
                     {/* Close button for mobile */}
                     <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden text-white/70 hover:text-white">
@@ -2011,8 +2078,25 @@ export default function App() {
                     initialModules={masterData.modules}
                     initialSlas={masterData.slas}
                     onUpdate={async () => {
-                        const data = await StorageService.fetchMasterData();
+                        const [data, settings] = await Promise.all([
+                            StorageService.fetchMasterData(),
+                            StorageService.fetchAppSettings()
+                        ]);
                         setMasterData(data);
+                        setAppSettings(settings);
+                        if (settings?.appName) document.title = settings.appName;
+                    }}
+                />
+            )}
+
+            {currentUser && (
+                <EditProfileModal
+                    isOpen={showEditProfile}
+                    onClose={() => setShowEditProfile(false)}
+                    user={currentUser}
+                    onUpdate={(updatedUser) => {
+                        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                        setCurrentUser(updatedUser);
                     }}
                 />
             )}

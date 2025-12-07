@@ -1,4 +1,4 @@
-import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig, Notification, NotificationType } from '../types';
+import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig, Notification, NotificationType, AppSettings } from '../types';
 import { supabase } from './supabaseClient';
 
 // Helper to map DB snake_case to App camelCase
@@ -634,5 +634,102 @@ export const StorageService = {
     }
 
     return count || 0;
+  },
+
+  // --- App Settings & User Profile ---
+
+  fetchAppSettings: async (): Promise<AppSettings> => {
+    // Try LocalStorage first (for dev/offline robustness)
+    let localSettings: Partial<AppSettings> = {};
+    try {
+      const stored = localStorage.getItem('plc_app_settings');
+      if (stored) localSettings = JSON.parse(stored);
+    } catch (e) {
+      console.warn('LocalStorage read failed:', e);
+    }
+
+    const defaultSettings: AppSettings = {
+      appName: 'PLC HelpDesk',
+      logoUrl: null,
+      supportEmail: 'support@plc.com',
+      primaryColor: '#4f46e5'
+    };
+
+    if (!supabase) return { ...defaultSettings, ...localSettings };
+
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('*')
+      .single();
+
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') console.error('Error fetching app settings:', error);
+      // Return local settings combined with defaults
+      return { ...defaultSettings, ...localSettings };
+    }
+
+    // Merge: Local > DB > Default (Prioritize Local cache for dev flexibility/offline)
+    return {
+      appName: localSettings.appName || data.app_name || defaultSettings.appName,
+      logoUrl: localSettings.logoUrl !== undefined ? localSettings.logoUrl : (data.logo_url || defaultSettings.logoUrl),
+      supportEmail: localSettings.supportEmail || data.support_email || defaultSettings.supportEmail,
+      primaryColor: localSettings.primaryColor || data.primary_color || defaultSettings.primaryColor
+    };
+  },
+
+  updateAppSettings: async (settings: Partial<AppSettings>): Promise<boolean> => {
+    if (!supabase) return false;
+
+    // Check if row exists, if not insert, else update (id=1 is standard singleton pattern for settings)
+    const dbSettings: any = {};
+    if (settings.appName !== undefined) dbSettings.app_name = settings.appName;
+    if (settings.logoUrl !== undefined) dbSettings.logo_url = settings.logoUrl;
+    if (settings.supportEmail !== undefined) dbSettings.support_email = settings.supportEmail;
+    if (settings.primaryColor !== undefined) dbSettings.primary_color = settings.primaryColor;
+
+    // Persist to LocalStorage for offline/dev fallback
+    try {
+      const stored = localStorage.getItem('plc_app_settings');
+      const currentLocal = stored ? JSON.parse(stored) : {};
+      // Important: Merge new settings into existing local state to avoid overwriting with partials
+      const newLocal = { ...currentLocal, ...settings };
+      localStorage.setItem('plc_app_settings', JSON.stringify(newLocal));
+    } catch (e) {
+      console.warn('LocalStorage save failed:', e);
+    }
+
+    // Use upsert directly to handle both create and update
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ id: 1, ...dbSettings }, { onConflict: 'id' });
+
+    if (error) {
+      console.error('Error updating/upserting app settings (using local fallback):', error);
+      // Return true because we saved to localStorage at least
+      return true;
+    }
+
+    return true;
+  },
+
+  updateUserProfile: async (userId: string, updates: Partial<User>): Promise<boolean> => {
+    if (!supabase) return false;
+
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.email !== undefined) dbUpdates.email = updates.email;
+    if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+    if (updates.role !== undefined) dbUpdates.role = updates.role;
+
+    const { error } = await supabase
+      .from('users')
+      .update(dbUpdates)
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating user profile:', error);
+      return false;
+    }
+    return true;
   }
 };

@@ -13,7 +13,7 @@ interface AdminConfigViewProps {
 }
 
 export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initialStatuses, initialModules, initialSlas, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'statuses' | 'modules' | 'slas'>('statuses');
+    const [activeTab, setActiveTab] = useState<'statuses' | 'modules' | 'slas' | 'branding'>('statuses');
     const [statuses, setStatuses] = useState<StatusConfig[]>(initialStatuses);
     const [modules, setModules] = useState<ModuleConfig[]>(initialModules);
     const [slas, setSlas] = useState<SlaConfig[]>(initialSlas);
@@ -168,6 +168,78 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
         }
     };
 
+    // --- Branding Logic ---
+    const [branding, setBranding] = useState({
+        appName: 'PLC HelpDesk',
+        supportEmail: '',
+        logoUrl: null as string | null
+    });
+    const [isSavingBranding, setIsSavingBranding] = useState(false);
+    const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'branding') {
+            loadBranding();
+        }
+    }, [activeTab]);
+
+    const loadBranding = async () => {
+        setIsLoading(true);
+        try {
+            const settings = await StorageService.fetchAppSettings();
+            setBranding({
+                appName: settings.appName,
+                supportEmail: settings.supportEmail,
+                logoUrl: settings.logoUrl
+            });
+        } catch (err) {
+            console.error("Failed to load settings", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleBrandingSave = async () => {
+        setIsSavingBranding(true);
+        setShowSaveSuccess(false);
+        try {
+            await StorageService.updateAppSettings({
+                appName: branding.appName,
+                supportEmail: branding.supportEmail,
+                logoUrl: branding.logoUrl
+            });
+            // Force refresh of app level settings
+            onUpdate();
+
+            // Show success feedback
+            setShowSaveSuccess(true);
+            setTimeout(() => setShowSaveSuccess(false), 3000);
+
+        } catch (err) {
+            setError("Failed to save branding settings");
+        } finally {
+            setIsSavingBranding(false);
+        }
+    };
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setIsLoading(true);
+            try {
+                const path = await StorageService.uploadFile(file);
+                if (path) {
+                    const url = StorageService.getPublicUrl(path);
+                    setBranding(prev => ({ ...prev, logoUrl: url }));
+                }
+            } catch (err) {
+                setError("Failed to upload logo");
+            } finally {
+                setIsLoading(false);
+            }
+        }
+    };
+
     const handleSlaUpdate = async (id: number) => {
         setIsLoading(true);
         try {
@@ -207,26 +279,27 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-gray-100 dark:border-slate-700">
-                    <button
-                        onClick={() => setActiveTab('statuses')}
-                        className={`flex-1 py-4 text-sm font-medium text-center transition-colors ${activeTab === 'statuses' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                    >
-                        Ticket Statuses
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('modules')}
-                        className={`flex-1 py-4 text-sm font-medium text-center transition-colors ${activeTab === 'modules' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                    >
-                        ERP Modules
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('slas')}
-                        className={`flex-1 py-4 text-sm font-medium text-center transition-colors ${activeTab === 'slas' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                    >
-                        SLA Policies
-                    </button>
+                {/* Tabs - Modern Pill Design */}
+                <div className="px-6 py-2 border-b border-gray-100 dark:border-slate-700">
+                    <div className="flex p-1 space-x-1 bg-gray-100 dark:bg-slate-900/50 rounded-xl">
+                        {[
+                            { id: 'statuses', label: 'Ticket Statuses' },
+                            { id: 'modules', label: 'ERP Modules' },
+                            { id: 'slas', label: 'SLA Policies' },
+                            { id: 'branding', label: 'Branding' }
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all duration-200 ${activeTab === tab.id
+                                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-slate-800/50'
+                                    }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -239,9 +312,9 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
 
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
-                            {activeTab === 'statuses' ? 'Manage Statuses' : activeTab === 'modules' ? 'Manage Modules' : 'SLA Resolution Times'}
+                            {activeTab === 'statuses' ? 'Manage Statuses' : activeTab === 'modules' ? 'Manage Modules' : activeTab === 'slas' ? 'SLA Resolution Times' : 'Appearance & Branding'}
                         </h3>
-                        {activeTab !== 'slas' && (
+                        {activeTab !== 'slas' && activeTab !== 'branding' && (
                             <button
                                 onClick={() => { setShowAddModal(true); resetForm(); }}
                                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
@@ -251,8 +324,78 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                         )}
                     </div>
 
-                    <div className="space-y-2">
-                        {activeTab === 'statuses' ? (
+                    <div className="space-y-4">
+                        {activeTab === 'branding' ? (
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Application Name</label>
+                                    <input
+                                        type="text"
+                                        value={branding.appName}
+                                        onChange={e => setBranding(prev => ({ ...prev, appName: e.target.value }))}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        placeholder="e.g. Acme Corp HelpDesk"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Support Email</label>
+                                    <input
+                                        type="email"
+                                        value={branding.supportEmail}
+                                        onChange={e => setBranding(prev => ({ ...prev, supportEmail: e.target.value }))}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        placeholder="e.g. support@acme.com"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Logo</label>
+                                    <div className="flex items-center space-x-4">
+                                        <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 flex items-center justify-center overflow-hidden">
+                                            {branding.logoUrl ? (
+                                                <img src={branding.logoUrl} alt="Logo Preview" className="w-full h-full object-contain" />
+                                            ) : (
+                                                <div className="text-gray-400 text-xs text-center px-1">No Logo</div>
+                                            )}
+                                        </div>
+                                        <label className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors text-sm font-medium">
+                                            Upload New Logo
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                        </label>
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2">Recommended size: 200x50px. PNG or SVG with transparent background.</p>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-100 dark:border-slate-700">
+                                    <button
+                                        onClick={handleBrandingSave}
+                                        disabled={isSavingBranding || showSaveSuccess}
+                                        className={`w-full sm:w-auto px-6 py-2.5 font-bold rounded-lg shadow-md disabled:opacity-50 transition-all flex items-center justify-center ${showSaveSuccess
+                                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                            }`}
+                                    >
+                                        {isSavingBranding ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                                Saving...
+                                            </>
+                                        ) : showSaveSuccess ? (
+                                            <>
+                                                <Check className="w-4 h-4 mr-2" />
+                                                Saved Successfully!
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Check className="w-4 h-4 mr-2" />
+                                                Save Changes
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : activeTab === 'statuses' ? (
                             statuses.map(status => (
                                 <div key={status.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                     <div className="flex items-center space-x-3">
@@ -351,7 +494,9 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                             ))
                         )}
 
-                        {(activeTab === 'statuses' ? statuses.length === 0 : activeTab === 'modules' ? modules.length === 0 : slas.length === 0) && (
+
+
+                        {(activeTab === 'statuses' ? statuses.length === 0 : activeTab === 'modules' ? modules.length === 0 : activeTab === 'slas' ? slas.length === 0 : false) && (
                             <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                                 No items found.
                             </div>

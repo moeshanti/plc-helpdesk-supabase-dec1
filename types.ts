@@ -139,3 +139,10 @@ export interface Notification {
   message: string;
   is_read: boolean;
 }
+
+export interface AppSettings {
+  appName: string;
+  logoUrl: string | null;
+  supportEmail: string;
+  primaryColor: string;
+}
