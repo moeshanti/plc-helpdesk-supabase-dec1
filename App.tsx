@@ -217,6 +217,17 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
         );
     }
 
+    // Animation State
+    const [shouldAnimate, setShouldAnimate] = useState(true);
+
+    useEffect(() => {
+        // Disable animation after initial mount period to prevent re-animation on updates
+        const timer = setTimeout(() => {
+            setShouldAnimate(false);
+        }, 1500);
+        return () => clearTimeout(timer);
+    }, []);
+
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
     const onPieEnter = (_: any, index: number) => {
@@ -266,10 +277,10 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                             />
                             <Tooltip
                                 contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                                itemStyle={{ color: '#6366f1' }}
+                                itemStyle={{ color: isDark ? '#fff' : '#6366f1' }}
                                 cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }}
                             />
-                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
+                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={shouldAnimate} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
