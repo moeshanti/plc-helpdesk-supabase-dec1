@@ -5,16 +5,17 @@ import { TicketStatus, StatusConfig } from '../types';
 interface StatusBadgeProps {
     status: TicketStatus;
     config?: StatusConfig[];
+    className?: string;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, config }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, config, className }) => {
     // Try to find dynamic config first
     const statusConfig = config?.find(c => c.label === status);
 
     if (statusConfig) {
         return (
             <span
-                className="px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap"
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${className || ''}`}
                 style={{
                     backgroundColor: `${statusConfig.colorHex}20`, // 20% opacity for bg
                     color: statusConfig.colorHex,
@@ -42,7 +43,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, config }) => {
     const styleClass = styles[status] || 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
 
     return (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${styleClass}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${styleClass} ${className || ''}`}>
             {status}
         </span>
     );

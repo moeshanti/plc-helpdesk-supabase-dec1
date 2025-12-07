@@ -292,6 +292,22 @@ export const StorageService = {
     return mapDbTicketToLocal(data);
   },
 
+  fetchPublicTicket: async (ticketNumber: string): Promise<Ticket | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('id, number, title, status, priority, updated_at, reporter_id, assignee_id, created_at, module, description') // Select fields needed for display + mapping
+      .eq('number', ticketNumber)
+      .single();
+
+    if (error) {
+      console.error('Error fetching public ticket:', error);
+      return null;
+    }
+    // Map minimal data to full Ticket object (some fields will be undefined/defaults)
+    return mapDbTicketToLocal(data);
+  },
+
   fetchUsers: async (): Promise<User[]> => {
     const { data, error } = await supabase
       .from('users')
@@ -434,8 +450,11 @@ export const StorageService = {
 
   // --- Master Data Management ---
 
-  fetchMasterData: async (): Promise<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[] }> => {
-    if (!supabase) return { statuses: [], modules: [], slas: [] };
+  fetchMasterData: async (): Promise<{ statuses: StatusConfig[], modules: ModuleConfig[], slas: SlaConfig[], masterSettings?: AppSettings }> => {
+    if (!supabase) {
+      const settings = await StorageService.fetchAppSettings();
+      return { statuses: [], modules: [], slas: [], masterSettings: settings };
+    }
 
     const [statusRes, moduleRes, slaRes] = await Promise.all([
       supabase.from('ticket_statuses').select('*').order('sort_order'),
@@ -443,10 +462,12 @@ export const StorageService = {
       supabase.from('ticket_slas').select('*').order('resolution_hours') // Order by hours (Critical usually lowest)
     ]);
 
+    // Fetch Settings
+    const settings = await StorageService.fetchAppSettings();
+
     if (statusRes.error) console.error('Error fetching statuses:', statusRes.error);
     if (moduleRes.error) console.error('Error fetching modules:', moduleRes.error);
     if (slaRes.error) console.error('Error fetching SLAs:', slaRes.error);
-    else console.log('Raw SLA Data:', slaRes.data);
 
     return {
       statuses: (statusRes.data || []).map((s: any) => ({
@@ -463,12 +484,12 @@ export const StorageService = {
       slas: (slaRes.data || []).map((s: any) => ({
         id: s.id,
         priority: s.priority,
-        // Handle potential column name mismatches or missing data
-        resolution_hours: s.resolution_hours || s.resolution_time || s.hours || 0,
-        color_hex: s.color_hex
-      }))
+        resolution_hours: s.resolution_hours
+      })),
+      masterSettings: settings
     };
   },
+
 
   createStatus: async (status: Omit<StatusConfig, 'id'>): Promise<StatusConfig> => {
     const { data, error } = await supabase
@@ -649,7 +670,7 @@ export const StorageService = {
     }
 
     const defaultSettings: AppSettings = {
-      appName: 'PLC HelpDesk',
+      appName: 'PLC ERP Desk',
       logoUrl: null,
       supportEmail: 'support@plc.com',
       primaryColor: '#4f46e5'
@@ -668,12 +689,12 @@ export const StorageService = {
       return { ...defaultSettings, ...localSettings };
     }
 
-    // Merge: Local > DB > Default (Prioritize Local cache for dev flexibility/offline)
+    // Merge: DB > Local > Default
     return {
-      appName: localSettings.appName || data.app_name || defaultSettings.appName,
-      logoUrl: localSettings.logoUrl !== undefined ? localSettings.logoUrl : (data.logo_url || defaultSettings.logoUrl),
-      supportEmail: localSettings.supportEmail || data.support_email || defaultSettings.supportEmail,
-      primaryColor: localSettings.primaryColor || data.primary_color || defaultSettings.primaryColor
+      appName: data.app_name || localSettings.appName || defaultSettings.appName,
+      logoUrl: data.logo_url || localSettings.logoUrl || defaultSettings.logoUrl,
+      supportEmail: data.support_email || localSettings.supportEmail || defaultSettings.supportEmail,
+      primaryColor: data.primary_color || localSettings.primaryColor || defaultSettings.primaryColor
     };
   },
 

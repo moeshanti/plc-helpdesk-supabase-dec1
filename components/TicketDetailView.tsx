@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     X, FileText, Maximize2, List, Sparkles, CheckCircle2, TestTube, Activity,
     GitPullRequest, Check, Paperclip, ArrowRight, RefreshCw, AlertTriangle,
-    Link as LinkIcon, Plus, Star
+    Link as LinkIcon, Plus, Star, Share2, ExternalLink
 } from 'lucide-react';
 import {
     Ticket, User, UserRole, TicketStatus, TicketPriority, RelationType,
     Attachment, Comment, TicketRelation, MasterData
 } from '../types';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { StorageService } from '../services/storageService';
 import { analyzeTicketImages, ImagePart } from '../services/geminiService';
 import { StatusBadge } from './StatusBadge';
@@ -53,6 +53,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     const [isAutoAnalyzeEnabled, setIsAutoAnalyzeEnabled] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [showCopyToast, setShowCopyToast] = useState(false);
 
     const commentsEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -434,9 +435,43 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                             <PriorityBadge priority={ticket.priority} />
                             <SlaTimer ticket={ticket} slas={masterData.slas} />
                         </div>
-                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
-                            <X className="h-5 w-5" />
-                        </button>
+                        <div className="flex items-center relative">
+                            <button
+                                onClick={() => window.open(`${window.location.origin}?track=${ticket.number}`, '_blank')}
+                                className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mr-3"
+                                title="Open Public Tracker"
+                            >
+                                <ExternalLink className="h-5 w-5" />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const url = `${window.location.origin}?track=${ticket.number}`;
+                                    navigator.clipboard.writeText(url);
+                                    setShowCopyToast(true);
+                                    setTimeout(() => setShowCopyToast(false), 3000);
+                                }}
+                                className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mr-3"
+                                title="Share Public Tracker"
+                            >
+                                <Share2 className="h-5 w-5" />
+                            </button>
+                            <AnimatePresence>
+                                {showCopyToast && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        className="absolute top-10 right-0 z-50 bg-gray-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap flex items-center"
+                                    >
+                                        <Check className="h-3 w-3 mr-1.5 text-emerald-400" />
+                                        Link Copied!
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
                     </div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{ticket.title}</h1>
                     <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{ticket.description}</p>
@@ -804,11 +839,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                         </div>
                         <div className="flex justify-between">
                             <dt className="text-sm text-gray-500">Created</dt>
-                            <dd className="text-sm font-medium text-gray-900 dark:text-white">{new Date(ticket.createdAt).toLocaleDateString()}</dd>
+                            <dd className="text-sm font-medium text-gray-900 dark:text-white">{new Date(ticket.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</dd>
                         </div>
                         <div className="flex justify-between">
                             <dt className="text-sm text-gray-500">Last Updated</dt>
-                            <dd className="text-sm font-medium text-gray-900 dark:text-white">{new Date(ticket.updatedAt).toLocaleDateString()}</dd>
+                            <dd className="text-sm font-medium text-gray-900 dark:text-white">{new Date(ticket.updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</dd>
                         </div>
                         <div className="flex justify-between items-center">
                             <dt className="text-sm text-gray-500">Reporter</dt>

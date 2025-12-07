@@ -104,6 +104,7 @@ import PageTransition from './components/PageTransition';
 import { Skeleton } from './components/ui/Skeleton';
 import { DashboardSkeleton, TicketListSkeleton, KanbanSkeleton } from './components/ViewSkeletons';
 import { TicketListView } from './components/TicketListView';
+import { TicketStatusPortal } from './components/TicketStatusPortal';
 import { ReactMediaRecorder } from "react-media-recorder";
 import { analyzeTicketImages, analyzeTicketVideo } from './services/geminiService';
 
@@ -343,7 +344,12 @@ export default function App() {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [users, setUsers] = useState<User[]>([]);
-    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'new' | 'board' | 'reports'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'new' | 'board' | 'reports' | 'portal'>(() => {
+        // Direct routing for portal
+        const searchParams = new URLSearchParams(window.location.search);
+        return searchParams.has('track') ? 'portal' : 'dashboard';
+    });
+    const [trackedTicketNumber] = useState(() => new URLSearchParams(window.location.search).get('track'));
     const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
     const selectedTicket = tickets.find(t => t.id === selectedTicketId);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1765,6 +1771,10 @@ export default function App() {
             </div>
         </div>
     );
+
+    if (currentView === 'portal' && trackedTicketNumber) {
+        return <TicketStatusPortal ticketNumber={trackedTicketNumber} />;
+    }
 
     if (isLoading) {
         return (
