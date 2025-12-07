@@ -269,7 +269,7 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                                 itemStyle={{ color: '#6366f1' }}
                                 cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }}
                             />
-                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
+                            <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={false} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -1477,8 +1477,21 @@ export default function App() {
                                                 <span className={`text-lg font-bold ${uploadError ? 'text-red-300' : 'text-white'}`}>
                                                     {uploadError || "Drop video file here"}
                                                 </span>
-                                                <span className={`text-sm mt-1 ${uploadError ? 'text-red-200' : 'text-indigo-200'}`}>
-                                                    {uploadError ? "Please choose a smaller file" : "Max size: 100MB"}
+                                                <span className={`text-sm mt-1 px-4 text-center ${uploadError ? 'text-red-200' : 'text-indigo-200'}`}>
+                                                    {uploadError ? (
+                                                        <>
+                                                            Please choose a smaller file.
+                                                            <br />
+                                                            <span className="inline-block mt-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-colors cursor-pointer" onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                setUploadError(null);
+                                                                e.currentTarget.closest('label')?.querySelector('input')?.click();
+                                                            }}>
+                                                                Select another file
+                                                            </span>
+                                                        </>
+                                                    ) : "Max size: 100MB"}
                                                 </span>
                                             </>
                                         )}
