@@ -1171,6 +1171,7 @@ export default function App() {
         const [suggestedSteps, setSuggestedSteps] = useState<string | null>(null);
         const [status, setStatus] = useState<TicketStatus>(TicketStatus.OPEN);
         const [isSubmitting, setIsSubmitting] = useState(false);
+        const [uploadError, setUploadError] = useState<string | null>(null);
 
         // UI Feedback state
         const [applyStatus, setApplyStatus] = useState({
@@ -1189,11 +1190,13 @@ export default function App() {
                 } else if (activeTab === 'upload-video') {
                     const file = e.target.files[0];
                     if (file) {
-                        if (file.size > 25 * 1024 * 1024) {
-                            alert("Video file size must be less than 25MB.");
+                        if (file.size > 1) {
+                            setUploadError("Video file size must be less than 100MB.");
                             e.target.value = ''; // Reset on error
+                            setVideoFile(null);
                             return;
                         }
+                        setUploadError(null);
                         setVideoFile(file);
                     }
                 }
@@ -1456,8 +1459,8 @@ export default function App() {
                                 )}
 
                                 {activeTab === 'upload-video' && (
-                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
-                                    ${videoFile ? 'bg-white/10 border-white/40' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
+                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300 relative
+                                    ${videoFile ? 'bg-white/10 border-white/40' : uploadError ? 'bg-red-500/10 border-red-400' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
                                 `}>
                                         {videoFile ? (
                                             <div className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden group/file">
@@ -1468,11 +1471,15 @@ export default function App() {
                                             </div>
                                         ) : (
                                             <>
-                                                <div className="h-12 w-12 bg-white/10 rounded-full flex items-center justify-center mb-3">
-                                                    <Video className="h-6 w-6 text-white" />
+                                                <div className={`h-12 w-12 rounded-full flex items-center justify-center mb-3 ${uploadError ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                                                    {uploadError ? <AlertTriangle className="h-6 w-6 text-red-300" /> : <Video className="h-6 w-6 text-white" />}
                                                 </div>
-                                                <span className="text-lg font-bold text-white">Drop video file here</span>
-                                                <span className="text-sm text-indigo-200 mt-1">Max size: 25MB</span>
+                                                <span className={`text-lg font-bold ${uploadError ? 'text-red-300' : 'text-white'}`}>
+                                                    {uploadError || "Drop video file here"}
+                                                </span>
+                                                <span className={`text-sm mt-1 ${uploadError ? 'text-red-200' : 'text-indigo-200'}`}>
+                                                    {uploadError ? "Please choose a smaller file" : "Max size: 100MB"}
+                                                </span>
                                             </>
                                         )}
                                         <input type="file" onChange={handleFileChange} className="hidden" accept="video/*" />
@@ -1527,9 +1534,14 @@ export default function App() {
                                                                 <>
                                                                     <button
                                                                         onClick={() => handleAnalyze(mediaBlobUrl)}
-                                                                        className="px-6 py-3 bg-white hover:bg-white/90 text-indigo-600 rounded-xl font-bold transition-all shadow-lg hover:shadow-white/25 flex items-center"
+                                                                        disabled={isAnalyzing}
+                                                                        className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center ${isAnalyzing ? 'bg-white/80 text-indigo-400 cursor-wait' : 'bg-white hover:bg-white/90 text-indigo-600 hover:shadow-white/25'}`}
                                                                     >
-                                                                        <Sparkles className="w-5 h-5 mr-2" /> Analyze Recording
+                                                                        {isAnalyzing ? (
+                                                                            <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</>
+                                                                        ) : (
+                                                                            <><Sparkles className="w-5 h-5 mr-2" /> Analyze Recording</>
+                                                                        )}
                                                                     </button>
                                                                     <button
                                                                         onClick={() => {
