@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+
 import {
     LayoutDashboard,
     Ticket as TicketIcon,
-    Plus,
     Settings,
     LogOut,
     UserCircle,
@@ -26,7 +26,6 @@ import {
     Database,
     ShieldCheck,
     Lock,
-    FileText,
     ThumbsUp,
     ThumbsDown,
     Zap,
@@ -191,6 +190,24 @@ const renderActiveShape = (props: any) => {
     );
 };
 
+const CustomChartTooltip = ({ active, payload, label, isDark }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className={`p-3 rounded-lg shadow-lg border border-opacity-10 ${isDark ? 'bg-slate-800 border-white/20' : 'bg-white border-gray-200'}`}>
+                <p className={`text-sm font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>{label}</p>
+                {payload.map((entry: any, index: number) => (
+                    <p key={index} className={`text-xs font-medium flex items-center mb-1 last:mb-0 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color || entry.fill }}></span>
+                        <span className="capitalize mr-1">{entry.name}:</span>
+                        <span className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{entry.value}</span>
+                    </p>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
 const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => {
     if (stats.total === 0) {
         return (
@@ -259,19 +276,6 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
         );
     };
 
-    const CustomBarTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className={`p-3 rounded-lg shadow-lg border border-opacity-10 ${isDark ? 'bg-slate-800 border-white/20' : 'bg-white border-gray-200'}`}>
-                    <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{label}</p>
-                    <p className={`text-xs font-medium ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>
-                        Count: <span className="font-bold">{payload[0].value}</span>
-                    </p>
-                </div>
-            );
-        }
-        return null;
-    };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -289,7 +293,7 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                                 tick={{ fill: isDark ? '#9ca3af' : '#64748b', fontSize: 11, fontWeight: 600 }}
                                 width={80}
                             />
-                            <Tooltip content={<CustomBarTooltip />} cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }} />
+                            <Tooltip content={<CustomChartTooltip isDark={isDark} />} cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }} />
                             <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={shouldAnimate} />
                         </BarChart>
                     </ResponsiveContainer>
@@ -321,7 +325,7 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                                 ))}
                                 <Label content={<CustomLabel />} position="center" />
                             </Pie>
-                            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} itemStyle={{ color: isDark ? '#fff' : '#000' }} />
+                            <Tooltip content={<CustomChartTooltip isDark={isDark} />} />
                             <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                         </PieChart>
                     </ResponsiveContainer>
@@ -335,10 +339,8 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
 
 export default function App() {
     const [tickets, setTickets] = useState<Ticket[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
-
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-
+    const [users, setUsers] = useState<User[]>([]);
     const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'new' | 'board' | 'reports'>('dashboard');
     const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
     const selectedTicket = tickets.find(t => t.id === selectedTicketId);
@@ -360,8 +362,8 @@ export default function App() {
         { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { id: 'list', icon: TicketIcon, label: 'All Tickets' },
         { id: 'board', icon: Kanban, label: 'Board View' },
-        { id: 'reports', icon: FileText, label: 'Reports' },
-        { id: 'create', icon: Plus, label: 'New Ticket' },
+        { id: 'reports', icon: FileSpreadsheet, label: 'Reports' },
+        { id: 'create', icon: Wand2, label: 'New Ticket' },
     ];
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -928,7 +930,7 @@ export default function App() {
                                     <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full border border-gray-200 dark:border-slate-500" />
                                     {currentUser?.id === user.id && (
                                         <div className="absolute -bottom-1 -right-1 bg-brand-500 text-white rounded-full p-0.5 border-2 border-white dark:border-slate-800">
-                                            <Check className="h-3 w-3" />
+                                            <Wand2 className="h-3 w-3" />
                                         </div>
                                     )}
                                 </div>
@@ -1002,97 +1004,27 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* Quick Actions Card */}
-                <div className="xl:w-80 bg-gradient-to-br from-brand-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg flex flex-col justify-between">
-                    <div>
-                        <h3 className="text-lg font-bold mb-2 flex items-center"><Zap className="h-5 w-5 mr-2" /> Quick Actions</h3>
-                        <p className="text-brand-100 text-sm mb-6">Need assistance with 1C ERP? Log a ticket instantly.</p>
+                {/* Quick Actions (Debug: Icons Removed) */}
+                <div className="xl:w-80 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 h-fit">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Quick Actions</h3>
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="w-full bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 text-white p-3 rounded-xl font-medium shadow-lg shadow-brand-500/25 flex items-center justify-center group transition-all"
+                        >
+                            <TicketIcon className="h-5 w-5 mr-2 group-hover:rotate-90 transition-transform" />
+                            New Ticket
+                        </button>
+                        <button className="w-full bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 p-3 rounded-xl font-medium flex items-center justify-center transition-colors">
+                            <TicketIcon className="h-5 w-5 mr-2" />
+                            Generate Report
+                        </button>
                     </div>
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => handleViewChange('create')}
-                        className="w-full bg-white text-brand-700 py-3 rounded-xl font-bold shadow-md hover:bg-brand-50 transition-colors flex items-center justify-center"
-                    >
-                        <Plus className="h-5 w-5 mr-2" /> Log New Ticket
-                    </motion.button>
                 </div>
             </div>
 
+            {/* Charts Section (Highlighted Fixes) */}
             <DashboardCharts stats={dashboardStats} isDark={isDark} />
-
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {[
-                    {
-                        status: TicketStatus.OPEN,
-                        label: 'Open',
-                        count: dashboardStats.statusCounts[TicketStatus.OPEN] || 0,
-                        colorClasses: {
-                            bg: 'bg-blue-50 dark:bg-blue-900/20',
-                            text: 'text-blue-600 dark:text-blue-400',
-                            border: 'bg-blue-500'
-                        }
-                    },
-                    {
-                        status: TicketStatus.TO_BE_INVESTIGATED,
-                        label: 'Investigating',
-                        count: dashboardStats.statusCounts[TicketStatus.TO_BE_INVESTIGATED] || 0,
-                        colorClasses: {
-                            bg: 'bg-purple-50 dark:bg-purple-900/20',
-                            text: 'text-purple-600 dark:text-purple-400',
-                            border: 'bg-purple-500'
-                        }
-                    },
-                    {
-                        status: TicketStatus.OPEN_BUG,
-                        label: 'Confirmed Bug',
-                        count: dashboardStats.statusCounts[TicketStatus.OPEN_BUG] || 0,
-                        colorClasses: {
-                            bg: 'bg-red-50 dark:bg-red-900/20',
-                            text: 'text-red-600 dark:text-red-400',
-                            border: 'bg-red-500'
-                        }
-                    },
-                    {
-                        status: TicketStatus.IN_PROGRESS,
-                        label: 'In Progress',
-                        count: dashboardStats.statusCounts[TicketStatus.IN_PROGRESS] || 0,
-                        colorClasses: {
-                            bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-                            text: 'text-yellow-600 dark:text-yellow-400',
-                            border: 'bg-yellow-500'
-                        }
-                    },
-                    {
-                        status: TicketStatus.RESOLVED,
-                        label: 'Resolved',
-                        count: dashboardStats.statusCounts[TicketStatus.RESOLVED] || 0,
-                        colorClasses: {
-                            bg: 'bg-green-50 dark:bg-green-900/20',
-                            text: 'text-green-600 dark:text-green-400',
-                            border: 'bg-green-500'
-                        }
-                    }
-                ].map((item, idx) => {
-                    const Icon = getStatusIcon(item.status);
-                    return (
-                        <div key={idx} className="group relative bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 hover:shadow-md transition-all duration-300 overflow-hidden cursor-default">
-                            {/* Hover Glow / Top Border */}
-                            <div className={`absolute top-0 left-0 w-full h-1 ${item.colorClasses.border} transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300`}></div>
-
-                            <div className="flex flex-col justify-between h-full">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-3xl font-bold text-gray-800 dark:text-white tracking-tight">{item.count}</span>
-                                    <div className={`p-2 rounded-lg ${item.colorClasses.bg} ${item.colorClasses.text}`}>
-                                        <Icon className="h-5 w-5" />
-                                    </div>
-                                </div>
-                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{item.label}</span>
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 {/* Left Column: Ticket Volume Chart */}
@@ -1121,7 +1053,7 @@ export default function App() {
                                 </defs>
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: isDark ? '#9ca3af' : '#9ca3af' }} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fill: isDark ? '#9ca3af' : '#9ca3af' }} />
-                                <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: isDark ? '#334155' : '#e5e7eb', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: isDark ? '#e2e8f0' : '#1f2937' }} />
+                                <Tooltip content={<CustomChartTooltip isDark={isDark} />} />
                                 <Area type="monotone" dataKey="created" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorCreated)" />
                                 <Area type="monotone" dataKey="resolved" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorResolved)" />
                             </AreaChart>
@@ -1467,7 +1399,7 @@ export default function App() {
                                                     </div>
                                                 ))}
                                                 <div className="flex flex-col items-center justify-center aspect-video rounded-lg border-2 border-dashed border-white/30 text-white/50 text-xs">
-                                                    <Plus className="w-6 h-6 mb-1" /> Add More
+                                                    <Wand2 className="h-4 w-4 mr-2" /> Add More
                                                 </div>
                                             </div>
                                         ) : (
