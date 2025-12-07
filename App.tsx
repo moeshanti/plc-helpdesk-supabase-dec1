@@ -259,6 +259,20 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
         );
     };
 
+    const CustomBarTooltip = ({ active, payload, label }: any) => {
+        if (active && payload && payload.length) {
+            return (
+                <div className={`p-3 rounded-lg shadow-lg border border-opacity-10 ${isDark ? 'bg-slate-800 border-white/20' : 'bg-white border-gray-200'}`}>
+                    <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{label}</p>
+                    <p className={`text-xs font-medium ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                        Count: <span className="font-bold">{payload[0].value}</span>
+                    </p>
+                </div>
+            );
+        }
+        return null;
+    };
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Module Distribution Chart - Bar Chart */}
@@ -275,11 +289,7 @@ const DashboardCharts = ({ stats, isDark }: { stats: any, isDark: boolean }) => 
                                 tick={{ fill: isDark ? '#9ca3af' : '#64748b', fontSize: 11, fontWeight: 600 }}
                                 width={80}
                             />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                                itemStyle={{ color: isDark ? '#fff' : '#6366f1' }}
-                                cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }}
-                            />
+                            <Tooltip content={<CustomBarTooltip />} cursor={{ fill: isDark ? '#334155' : '#f1f5f9', opacity: 0.4 }} />
                             <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={shouldAnimate} />
                         </BarChart>
                     </ResponsiveContainer>
