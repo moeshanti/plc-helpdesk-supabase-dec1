@@ -58,7 +58,8 @@ import {
     List,
     BarChart3,
     PieChart as PieChartIcon,
-    Plus
+    Plus,
+    Bolt
 } from 'lucide-react';
 import { withTimeout } from './utils/timeout';
 import { SlaHealthCard } from './components/SlaHealthCard';
@@ -982,7 +983,7 @@ export default function App() {
     const DashboardView = () => (
         <div className="space-y-6 animate-fade-in pb-8">
             {/* Quick Actions & KPIs */}
-            <div className="flex flex-col xl:flex-row gap-6">
+            <div className="flex flex-col gap-8">
                 <div className="flex-1 space-y-4">
                     {/* KPI Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1005,22 +1006,24 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* Quick Actions (Debug: Icons Removed) */}
-                <div className="xl:w-80 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 h-fit">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Quick Actions</h3>
-                    <div className="space-y-3">
-                        <button
-                            onClick={() => setIsCreateModalOpen(true)}
-                            className="w-full bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 text-white p-3 rounded-xl font-medium shadow-lg shadow-brand-500/25 flex items-center justify-center group transition-all"
-                        >
-                            <TicketIcon className="h-5 w-5 mr-2 group-hover:rotate-90 transition-transform" />
-                            New Ticket
-                        </button>
-                        <button className="w-full bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 p-3 rounded-xl font-medium flex items-center justify-center transition-colors">
-                            <TicketIcon className="h-5 w-5 mr-2" />
-                            Generate Report
-                        </button>
+                {/* Quick Actions Restored Banner */}
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 shadow-lg text-white flex flex-col sm:flex-row items-center justify-between gap-6">
+                    <div>
+                        <h3 className="text-2xl font-bold flex items-center mb-2">
+                            <Bolt className="h-6 w-6 mr-3" />
+                            Quick Actions
+                        </h3>
+                        <p className="text-blue-100 text-lg">
+                            Need assistance with 1C ERP? Log a ticket instantly.
+                        </p>
                     </div>
+                    <button
+                        onClick={() => handleViewChange('create')}
+                        className="bg-white text-blue-600 hover:bg-blue-50 px-6 py-3 rounded-xl font-bold shadow-md transition-all flex items-center whitespace-nowrap"
+                    >
+                        <Plus className="h-5 w-5 mr-2" />
+                        Log New Ticket
+                    </button>
                 </div>
             </div>
 
