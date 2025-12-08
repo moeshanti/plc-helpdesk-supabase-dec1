@@ -12,7 +12,8 @@ const getActionIcon = (type: string) => {
     switch (type) {
         case 'STATUS_CHANGE': return <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
         case 'PRIORITY_CHANGE': return <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400" />;
-        case 'ASSIGNMENT': return <UserIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />;
+        case 'ASSIGNMENT':
+        case 'ASSIGN_CHANGE': return <UserIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />;
         default: return <FileEdit className="w-4 h-4 text-gray-600 dark:text-gray-400" />;
     }
 };
@@ -21,7 +22,8 @@ const getActionColor = (type: string) => {
     switch (type) {
         case 'STATUS_CHANGE': return 'bg-blue-100 dark:bg-blue-500/20 border-blue-200 dark:border-blue-500/30';
         case 'PRIORITY_CHANGE': return 'bg-orange-100 dark:bg-orange-500/20 border-orange-200 dark:border-orange-500/30';
-        case 'ASSIGNMENT': return 'bg-purple-100 dark:bg-purple-500/20 border-purple-200 dark:border-purple-500/30';
+        case 'ASSIGNMENT':
+        case 'ASSIGN_CHANGE': return 'bg-purple-100 dark:bg-purple-500/20 border-purple-200 dark:border-purple-500/30';
         default: return 'bg-gray-100 dark:bg-gray-500/20 border-gray-200 dark:border-gray-500/30';
     }
 };
@@ -48,7 +50,11 @@ export const TicketHistoryTimeline: React.FC<TicketHistoryTimelineProps> = ({ lo
                 let message = '';
                 if (log.actionType === 'STATUS_CHANGE') message = `changed status from ${log.oldValue} to ${log.newValue}`;
                 else if (log.actionType === 'PRIORITY_CHANGE') message = `changed priority from ${log.oldValue} to ${log.newValue}`;
-                else if (log.actionType === 'ASSIGNMENT') message = `assigned ticket to ${users.find(u => u.id === log.newValue)?.name || 'Unassigned'}`;
+                else if (log.actionType === 'ASSIGN_CHANGE' || log.actionType === 'ASSIGNMENT') {
+                    const oldUser = users.find(u => u.id === log.oldValue)?.name || 'Unassigned';
+                    const newUser = users.find(u => u.id === log.newValue)?.name || 'Unassigned';
+                    message = `changed assignee from ${oldUser} to ${newUser}`;
+                }
                 else message = `updated ${log.fieldChanged}`;
 
                 const timeDiff = Math.floor((new Date().getTime() - new Date(log.createdAt).getTime()) / 60000); // minutes
