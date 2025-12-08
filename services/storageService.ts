@@ -1,4 +1,4 @@
-import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig, Notification, NotificationType, AppSettings } from '../types';
+import { Ticket, User, TicketStatus, TicketPriority, UserRole, StatusConfig, ModuleConfig, SlaConfig, Notification, NotificationType, AppSettings, AuditLog } from '../types';
 import { supabase } from './supabaseClient';
 
 // Helper to map DB snake_case to App camelCase
@@ -657,7 +657,61 @@ export const StorageService = {
     return count || 0;
   },
 
-  // --- App Settings & User Profile ---
+  // --- Audit Trail ---
+
+  fetchTicketHistory: async (ticketId: string): Promise<AuditLog[]> => {
+    if (!supabase) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching ticket history:', error);
+      return [];
+    }
+
+    return data.map((log: any) => ({
+      id: log.id,
+      ticketId: log.ticket_id,
+      actorId: log.actor_id,
+      actionType: log.action_type,
+      fieldChanged: log.field_changed,
+      oldValue: log.old_value,
+      newValue: log.new_value,
+      createdAt: new Date(log.created_at)
+    }));
+  },
+
+  logTicketChange: async (
+    ticketId: string,
+    actorId: string,
+    actionType: string,
+    field: string,
+    oldValue: any,
+    newValue: any
+  ) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('audit_logs')
+      .insert({
+        ticket_id: ticketId,
+        actor_id: actorId,
+        action_type: actionType,
+        field_changed: field,
+        old_value: String(oldValue),
+        new_value: String(newValue)
+      });
+
+    if (error) {
+      console.error('Error logging audit:', error);
+    }
+  },// --- App Settings & User Profile ---
 
   fetchAppSettings: async (): Promise<AppSettings> => {
     // Try LocalStorage first (for dev/offline robustness)

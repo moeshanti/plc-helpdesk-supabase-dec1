@@ -6,14 +6,16 @@ import {
 } from 'lucide-react';
 import {
     Ticket, User, UserRole, TicketStatus, TicketPriority, RelationType,
-    Attachment, Comment, TicketRelation, MasterData
+    Attachment, Comment, TicketRelation, MasterData, AuditLog
 } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StorageService } from '../services/storageService';
+import { INITIAL_USERS } from '../services/storageService';
 import { analyzeTicketImages, ImagePart } from '../services/geminiService';
 import { StatusBadge } from './StatusBadge';
 import { PriorityBadge } from './PriorityBadge';
 import { SlaTimer } from './SlaTimer';
+import { TicketHistoryTimeline } from './TicketHistoryTimeline';
 import { AIAnalysisBlock } from './AIAnalysisBlock';
 
 interface TicketDetailViewProps {
@@ -28,17 +30,18 @@ interface TicketDetailViewProps {
     onSelectTicket: (id: string) => void; // For navigating to related tickets
 }
 
-export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
-    ticket,
-    tickets,
-    currentUser,
-    users,
-    masterData,
-    onClose,
-    onUpdateTicket,
-    onTicketUpdated,
-    onSelectTicket
-}) => {
+export const TicketDetailView = (props: TicketDetailViewProps) => {
+    const {
+        ticket,
+        tickets,
+        currentUser,
+        users,
+        masterData,
+        onClose,
+        onUpdateTicket,
+        onTicketUpdated,
+        onSelectTicket
+    } = props;
     const [commentText, setCommentText] = useState('');
     const [commentFiles, setCommentFiles] = useState<File[]>([]);
     const [showResolveModal, setShowResolveModal] = useState(false);
@@ -54,6 +57,9 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [showCopyToast, setShowCopyToast] = useState(false);
+    const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
+    const [historyLogs, setHistoryLogs] = useState<AuditLog[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
     const commentsEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +76,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     }, [ticket?.comments.length]);
 
     // Fetch full details (comments, description, etc.) if they might be missing
+
     useEffect(() => {
         const loadDetails = async () => {
             if (ticket?.id) {
@@ -81,6 +88,24 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         };
         loadDetails();
     }, [ticket?.id]);
+
+    // Fetch history when tab is active
+    useEffect(() => {
+        const loadHistory = async () => {
+            if (activeTab === 'history' && ticket?.id) {
+                setIsLoadingHistory(true);
+                try {
+                    const history = await StorageService.fetchTicketHistory(ticket.id);
+                    setHistoryLogs(history);
+                } catch (error) {
+                    // Fail silently
+                } finally {
+                    setIsLoadingHistory(false);
+                }
+            }
+        };
+        loadHistory();
+    }, [activeTab, ticket?.id, ticket?.updatedAt]); // Refetch on tab change or ticket change
 
     if (!ticket) return <div>Ticket not found</div>;
 
@@ -589,103 +614,135 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                     </div>
                 )}
 
-                {/* Activity History */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col">
-                    <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex items-center">
-                        <Activity className="h-5 w-5 text-brand-600 mr-2" />
-                        <h3 className="font-bold text-gray-900 dark:text-white">Activity History</h3>
+                {/* Tabbed Activity Section */}
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col min-h-[400px]">
+                    <div className="flex items-center border-b border-gray-100 dark:border-slate-700">
+                        <button
+                            onClick={() => setActiveTab('comments')}
+                            className={`flex-1 py-4 text-sm font-bold flex items-center justify-center transition-colors relative ${activeTab === 'comments' ? 'text-brand-600 dark:text-brand-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                        >
+                            <Activity className="h-4 w-4 mr-2" />
+                            Comments ({ticket.comments.length})
+                            {activeTab === 'comments' && (
+                                <motion.div layoutId="activeTab" className="absolute bottom-0 h-0.5 w-full bg-brand-600 dark:bg-brand-400" />
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('history')}
+                            className={`flex-1 py-4 text-sm font-bold flex items-center justify-center transition-colors relative ${activeTab === 'history' ? 'text-brand-600 dark:text-brand-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                        >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            History
+                            {activeTab === 'history' && (
+                                <motion.div layoutId="activeTab" className="absolute bottom-0 h-0.5 w-full bg-brand-600 dark:bg-brand-400" />
+                            )}
+                        </button>
                     </div>
 
-                    <div className="p-6 space-y-6 bg-gray-50/50 dark:bg-slate-900/50">
-                        {ticket.comments.map((comment) => {
-                            const user = users.find(u => u.id === comment.userId);
-                            return (
-                                <div key={comment.id} className={`flex space-x-3 ${comment.isSystem ? 'justify-center' : ''}`}>
-                                    {!comment.isSystem && (
-                                        <img src={user?.avatar} alt={user?.name} className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-600 flex-shrink-0" />
-                                    )}
-
-                                    {comment.isSystem ? (
-                                        <div className="bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-xs text-gray-500 dark:text-gray-400 flex items-center border border-gray-200 dark:border-slate-700">
-                                            <GitPullRequest className="h-3 w-3 mr-1.5" />
-                                            <span className="font-semibold mr-1">{user?.name}</span> {comment.text}
-                                            <span className="ml-2 text-[10px] opacity-70">{new Date(comment.timestamp).toLocaleTimeString()}</span>
-                                        </div>
-                                    ) : (
-                                        <div className={`flex-1 max-w-2xl ${comment.isResolution ? 'border-2 border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-900/10' : 'bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700'} rounded-2xl rounded-tl-none p-4 shadow-sm`}>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="font-bold text-sm text-gray-900 dark:text-white">{user?.name}</span>
-                                                <span className="text-xs text-gray-400">{new Date(comment.timestamp).toLocaleString()}</span>
-                                            </div>
-
-                                            {comment.isResolution && (
-                                                <div className="mb-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
-                                                    <Check className="h-3 w-3 mr-1" /> Solution
-                                                </div>
+                    <div className="p-6 space-y-6 bg-gray-50/50 dark:bg-slate-900/50 flex-1 overflow-y-auto">
+                        {activeTab === 'comments' ? (
+                            <>
+                                {ticket.comments.map((comment) => {
+                                    const user = users.find(u => u.id === comment.userId);
+                                    return (
+                                        <div key={comment.id} className={`flex space-x-3 ${comment.isSystem ? 'justify-center' : ''}`}>
+                                            {!comment.isSystem && (
+                                                <img src={user?.avatar} alt={user?.name} className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-600 flex-shrink-0" />
                                             )}
 
-                                            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{comment.text}</p>
-
-                                            {/* Attachments in Comment */}
-                                            {comment.attachments && comment.attachments.length > 0 && (
-                                                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                    {comment.attachments.map((att, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => setPreviewImage(att.url)}
-                                                            className="block rounded-lg overflow-hidden border border-gray-200 dark:border-slate-600 h-20 relative group hover:ring-2 ring-brand-400 transition-all"
-                                                        >
-                                                            {att.type === 'image' && att.url ? (
-                                                                <img src={att.url} alt="att" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                                            ) : <div className="w-full h-full flex items-center justify-center bg-gray-50"><FileText className="h-6 w-6 text-gray-400" /></div>}
-                                                        </button>
-                                                    ))}
+                                            {comment.isSystem ? (
+                                                <div className="bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-xs text-gray-500 dark:text-gray-400 flex items-center border border-gray-200 dark:border-slate-700">
+                                                    <GitPullRequest className="h-3 w-3 mr-1.5" />
+                                                    <span className="font-semibold mr-1">{user?.name}</span> {comment.text}
+                                                    <span className="ml-2 text-[10px] opacity-70">{new Date(comment.timestamp).toLocaleTimeString()}</span>
                                                 </div>
-                                            )}
-
-                                            {/* AI Loading State with Cancel */}
-                                            {comment.isAnalyzing && (
-                                                <div className="mt-3 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-                                                    <div className="flex items-center space-x-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                                                        <Sparkles className="h-3 w-3 animate-pulse" />
-                                                        <span>AI is analyzing this screenshot...</span>
+                                            ) : (
+                                                <div className={`flex-1 max-w-2xl ${comment.isResolution ? 'border-2 border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-900/10' : 'bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700'} rounded-2xl rounded-tl-none p-4 shadow-sm`}>
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="font-bold text-sm text-gray-900 dark:text-white">{user?.name}</span>
+                                                        <span className="text-xs text-gray-400">{new Date(comment.timestamp).toLocaleString()}</span>
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleCancelAnalysis(ticket.id, comment.id)}
-                                                        className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                            )}
 
-                                            {/* Manual Trigger Button */}
-                                            {!comment.isAnalyzing && !comment.aiAnalysis && comment.attachments?.some(a => a.type === 'image') && (
-                                                <div className="mt-2">
-                                                    <button
-                                                        onClick={() => handleTriggerAnalysis(ticket.id, comment.id)}
-                                                        className="flex items-center space-x-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
-                                                    >
-                                                        <Sparkles className="h-3 w-3" />
-                                                        <span>Analyze with AI</span>
-                                                    </button>
-                                                </div>
-                                            )}
+                                                    {comment.isResolution && (
+                                                        <div className="mb-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
+                                                            <Check className="h-3 w-3 mr-1" /> Solution
+                                                        </div>
+                                                    )}
 
-                                            {/* AI Analysis Block */}
-                                            {comment.aiAnalysis && (
-                                                <AIAnalysisBlock
-                                                    analysis={comment.aiAnalysis}
-                                                    feedback={comment.aiAnalysisFeedback}
-                                                    onFeedback={(type) => handleCommentFeedback(ticket.id, comment.id, type)}
-                                                />
+                                                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{comment.text}</p>
+
+                                                    {/* Attachments in Comment */}
+                                                    {comment.attachments && comment.attachments.length > 0 && (
+                                                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                            {comment.attachments.map((att, i) => (
+                                                                <button
+                                                                    key={i}
+                                                                    onClick={() => setPreviewImage(att.url)}
+                                                                    className="block rounded-lg overflow-hidden border border-gray-200 dark:border-slate-600 h-20 relative group hover:ring-2 ring-brand-400 transition-all"
+                                                                >
+                                                                    {att.type === 'image' && att.url ? (
+                                                                        <img src={att.url} alt="att" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                                    ) : <div className="w-full h-full flex items-center justify-center bg-gray-50"><FileText className="h-6 w-6 text-gray-400" /></div>}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* AI Loading State with Cancel */}
+                                                    {comment.isAnalyzing && (
+                                                        <div className="mt-3 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                                                            <div className="flex items-center space-x-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                                                                <Sparkles className="h-3 w-3 animate-pulse" />
+                                                                <span>AI is analyzing this screenshot...</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleCancelAnalysis(ticket.id, comment.id)}
+                                                                className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Manual Trigger Button */}
+                                                    {!comment.isAnalyzing && !comment.aiAnalysis && comment.attachments?.some(a => a.type === 'image') && (
+                                                        <div className="mt-2">
+                                                            <button
+                                                                onClick={() => handleTriggerAnalysis(ticket.id, comment.id)}
+                                                                className="flex items-center space-x-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+                                                            >
+                                                                <Sparkles className="h-3 w-3" />
+                                                                <span>Analyze with AI</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* AI Analysis Block */}
+                                                    {comment.aiAnalysis && (
+                                                        <AIAnalysisBlock
+                                                            analysis={comment.aiAnalysis}
+                                                            feedback={comment.aiAnalysisFeedback}
+                                                            onFeedback={(type) => handleCommentFeedback(ticket.id, comment.id, type)}
+                                                        />
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
-                                    )}
+                                    );
+                                })}
+
+                                <div ref={commentsEndRef} />
+                            </>
+                        ) : (
+                            isLoadingHistory ? (
+                                <div className="flex flex-col items-center justify-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-2"></div>
+                                    <p className="text-sm text-gray-400">Loading history...</p>
                                 </div>
-                            );
-                        })}
-                        <div ref={commentsEndRef} />
+                            ) : (
+                                <TicketHistoryTimeline logs={historyLogs} users={users} />
+                            )
+                        )}
                     </div>
 
                     {/* Comment Input */}
@@ -794,6 +851,16 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                                         ))}
                                     </select>
                                 </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-gray-500 mb-1 block">Priority</label>
+                                <select
+                                    className="w-full p-2 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-sm font-medium text-gray-800 dark:text-white outline-none"
+                                    value={ticket.priority}
+                                    onChange={(e) => onUpdateTicket(ticket.id, { priority: e.target.value as TicketPriority })}
+                                >
+                                    {Object.values(TicketPriority).map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Status</label>
@@ -922,139 +989,147 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             </div>
 
             {/* RESOLVE TICKET MODAL */}
-            {showResolveModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-100 dark:border-slate-700 p-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                                <CheckCircle2 className="h-6 w-6 text-emerald-500 mr-2" /> Resolve Ticket
-                            </h3>
-                            <button onClick={() => setShowResolveModal(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
+            {
+                showResolveModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-100 dark:border-slate-700 p-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                                    <CheckCircle2 className="h-6 w-6 text-emerald-500 mr-2" /> Resolve Ticket
+                                </h3>
+                                <button onClick={() => setShowResolveModal(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Resolution Description</label>
+                                    <textarea
+                                        value={resolutionText}
+                                        onChange={(e) => setResolutionText(e.target.value)}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-32"
+                                        placeholder="Describe how the issue was resolved..."
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Steps to Test / UAT</label>
+                                    <textarea
+                                        value={uatSteps}
+                                        onChange={(e) => setUatSteps(e.target.value)}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-24 font-mono text-xs"
+                                        placeholder="1. Log in as user... 2. Verify invoice #102..."
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Attachments (Screenshots/Proofs)</label>
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {resolveFiles.map((f, i) => (
+                                            <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
+                                                {f.type.startsWith('image') ? <img src={URL.createObjectURL(f)} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-gray-50 flex items-center justify-center"><FileText className="text-gray-400" /></div>}
+                                                <button onClick={() => setResolveFiles(p => p.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                        <label className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
+                                            <input type="file" multiple className="hidden" onChange={e => setResolveFiles(p => [...p, ...Array.from(e.target.files || [])])} />
+                                            <Plus className="h-6 w-6 text-gray-400" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100 dark:border-slate-700">
+                                    <button onClick={() => setShowResolveModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
+                                    <button onClick={handleResolve} disabled={!resolutionText.trim()} className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Confirm Resolution</button>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                )
+            }
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Resolution Description</label>
-                                <textarea
-                                    value={resolutionText}
-                                    onChange={(e) => setResolutionText(e.target.value)}
-                                    className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-32"
-                                    placeholder="Describe how the issue was resolved..."
-                                />
+            {/* REOPEN TICKET MODAL */}
+            {
+                showReopenModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 dark:border-slate-700 p-6">
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                                <AlertTriangle className="h-6 w-6 text-orange-500 mr-2" /> Re-Open Ticket
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Please explain why this ticket is being re-opened.</p>
+
+                            <textarea
+                                value={reopenReasonText}
+                                onChange={(e) => setReopenReasonText(e.target.value)}
+                                className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-32"
+                                placeholder="Reason for re-opening..."
+                                autoFocus
+                            />
+
+                            <div className="flex justify-end space-x-3 mt-6">
+                                <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
+                                <button onClick={handleReopen} disabled={!reopenReasonText.trim()} className="px-4 py-2 bg-orange-600 text-white font-bold rounded-lg hover:bg-orange-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Confirm Re-Open</button>
                             </div>
+                        </div>
+                    </div>
+                )
+            }
 
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Steps to Test / UAT</label>
-                                <textarea
-                                    value={uatSteps}
-                                    onChange={(e) => setUatSteps(e.target.value)}
-                                    className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-24 font-mono text-xs"
-                                    placeholder="1. Log in as user... 2. Verify invoice #102..."
-                                />
-                            </div>
+            {/* RELATION MODAL */}
+            {
+                showRelationModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700 p-6">
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                                <LinkIcon className="h-6 w-6 text-brand-500 mr-2" /> Link Related Ticket
+                            </h3>
 
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Attachments (Screenshots/Proofs)</label>
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                    {resolveFiles.map((f, i) => (
-                                        <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
-                                            {f.type.startsWith('image') ? <img src={URL.createObjectURL(f)} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-gray-50 flex items-center justify-center"><FileText className="text-gray-400" /></div>}
-                                            <button onClick={() => setResolveFiles(p => p.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
-                                        </div>
-                                    ))}
-                                    <label className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
-                                        <input type="file" multiple className="hidden" onChange={e => setResolveFiles(p => [...p, ...Array.from(e.target.files || [])])} />
-                                        <Plus className="h-6 w-6 text-gray-400" />
-                                    </label>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Target Ticket</label>
+                                    <select
+                                        value={relationTargetId}
+                                        onChange={(e) => setRelationTargetId(e.target.value)}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none"
+                                    >
+                                        <option value="">Select a ticket...</option>
+                                        {tickets.filter(t => t.id !== ticket.id).map(t => (
+                                            <option key={t.id} value={t.id}>{t.number}: {t.title}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Relation Type</label>
+                                    <select
+                                        value={relationType}
+                                        onChange={(e) => setRelationType(e.target.value as RelationType)}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none"
+                                    >
+                                        {Object.values(RelationType).map(type => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
-                            <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100 dark:border-slate-700">
-                                <button onClick={() => setShowResolveModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
-                                <button onClick={handleResolve} disabled={!resolutionText.trim()} className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Confirm Resolution</button>
+                            <div className="flex justify-end space-x-3 mt-6">
+                                <button onClick={() => setShowRelationModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
+                                <button onClick={handleAddRelation} disabled={!relationTargetId} className="px-4 py-2 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Add Link</button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* REOPEN TICKET MODAL */}
-            {showReopenModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 dark:border-slate-700 p-6">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                            <AlertTriangle className="h-6 w-6 text-orange-500 mr-2" /> Re-Open Ticket
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Please explain why this ticket is being re-opened.</p>
-
-                        <textarea
-                            value={reopenReasonText}
-                            onChange={(e) => setReopenReasonText(e.target.value)}
-                            className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white resize-none h-32"
-                            placeholder="Reason for re-opening..."
-                            autoFocus
-                        />
-
-                        <div className="flex justify-end space-x-3 mt-6">
-                            <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
-                            <button onClick={handleReopen} disabled={!reopenReasonText.trim()} className="px-4 py-2 bg-orange-600 text-white font-bold rounded-lg hover:bg-orange-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Confirm Re-Open</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* RELATION MODAL */}
-            {showRelationModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700 p-6">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                            <LinkIcon className="h-6 w-6 text-brand-500 mr-2" /> Link Related Ticket
-                        </h3>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Target Ticket</label>
-                                <select
-                                    value={relationTargetId}
-                                    onChange={(e) => setRelationTargetId(e.target.value)}
-                                    className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none"
-                                >
-                                    <option value="">Select a ticket...</option>
-                                    {tickets.filter(t => t.id !== ticket.id).map(t => (
-                                        <option key={t.id} value={t.id}>{t.number}: {t.title}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Relation Type</label>
-                                <select
-                                    value={relationType}
-                                    onChange={(e) => setRelationType(e.target.value as RelationType)}
-                                    className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none"
-                                >
-                                    {Object.values(RelationType).map(type => (
-                                        <option key={type} value={type}>{type}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end space-x-3 mt-6">
-                            <button onClick={() => setShowRelationModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancel</button>
-                            <button onClick={handleAddRelation} disabled={!relationTargetId} className="px-4 py-2 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Add Link</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Image Preview Modal */}
-            {previewImage && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fade-in" onClick={() => setPreviewImage(null)}>
-                    <button className="absolute top-4 right-4 text-white/70 hover:text-white"><X className="h-8 w-8" /></button>
-                    <img src={previewImage} className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" alt="Preview" onClick={e => e.stopPropagation()} />
-                </div>
-            )}
+            {
+                previewImage && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fade-in" onClick={() => setPreviewImage(null)}>
+                        <button className="absolute top-4 right-4 text-white/70 hover:text-white"><X className="h-8 w-8" /></button>
+                        <img src={previewImage} className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" alt="Preview" onClick={e => e.stopPropagation()} />
+                    </div>
+                )
+            }
         </div>
     );
 };

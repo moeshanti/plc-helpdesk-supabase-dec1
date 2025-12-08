@@ -685,8 +685,17 @@ export default function App() {
         let updatedComments = ticketToUpdate.comments;
         const payload: Partial<Ticket> = { ...updates };
 
-        // [NOTIFICATION LOGIC] Check for Assignment Change
+        // [Audit Trail] Log Assignment Change
         if (updates.assigneeId && updates.assigneeId !== ticketToUpdate.assigneeId) {
+            await StorageService.logTicketChange(
+                id,
+                currentUser.id,
+                'ASSIGN_CHANGE',
+                'assignee',
+                ticketToUpdate.assigneeId,
+                updates.assigneeId
+            );
+
             // Notify New Assignee
             if (updates.assigneeId !== currentUser.id) { // Don't notify self
                 await StorageService.createNotification({
@@ -699,8 +708,37 @@ export default function App() {
             }
         }
 
-        // [NOTIFICATION LOGIC] Check for Status Change (Notify Reporter)
+        if (updates.priority && updates.priority !== ticketToUpdate.priority) {
+            await StorageService.logTicketChange(
+                id,
+                currentUser.id,
+                'PRIORITY_CHANGE',
+                'priority',
+                ticketToUpdate.priority,
+                updates.priority
+            );
+
+            const systemComment: Comment = {
+                id: `sys${Date.now()}`,
+                userId: currentUser.id,
+                text: `changed priority from ${ticketToUpdate.priority} to ${updates.priority}`,
+                timestamp: new Date(),
+                isSystem: true
+            };
+            updatedComments = [...updatedComments, systemComment];
+            payload.comments = updatedComments;
+        }
+
         if (updates.status && updates.status !== ticketToUpdate.status) {
+            await StorageService.logTicketChange(
+                id,
+                currentUser.id,
+                'STATUS_CHANGE',
+                'status',
+                ticketToUpdate.status,
+                updates.status
+            );
+
             const systemComment: Comment = {
                 id: `sys${Date.now()}`,
                 userId: currentUser.id,

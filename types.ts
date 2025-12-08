@@ -146,3 +146,14 @@ export interface AppSettings {
   supportEmail: string;
   primaryColor: string;
 }
+
+export interface AuditLog {
+  id: string;
+  ticketId: string;
+  actorId: string;
+  actionType: 'STATUS_CHANGE' | 'PRIORITY_CHANGE' | 'ASSIGNMENT' | 'UPDATE';
+  fieldChanged?: string;
+  oldValue?: string;
+  newValue?: string;
+  createdAt: Date;
+}
