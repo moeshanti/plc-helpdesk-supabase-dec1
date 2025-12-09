@@ -9,12 +9,24 @@ interface AIAnalysisBlockProps {
 
 export const AIAnalysisBlock: React.FC<AIAnalysisBlockProps> = ({ analysis, onFeedback, feedback }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    let cleanAnalysis = analysis;
+    try {
+        // Remove markdown code blocks if present
+        const jsonString = analysis.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(jsonString);
+        if (parsed.description) {
+            cleanAnalysis = parsed.description;
+        }
+    } catch (e) {
+        // If not JSON, use raw string
+    }
+
     const maxLength = 280;
-    const shouldTruncate = analysis.length > maxLength;
+    const shouldTruncate = cleanAnalysis.length > maxLength;
 
     const displayText = isExpanded || !shouldTruncate
-        ? analysis
-        : analysis.slice(0, maxLength).trim() + '...';
+        ? cleanAnalysis
+        : cleanAnalysis.slice(0, maxLength).trim() + '...';
 
     return (
         <div className="mt-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-slate-700 dark:to-slate-800 border border-indigo-100 dark:border-slate-600 rounded-xl p-4 relative overflow-hidden">
