@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '/.netlify/functions': {
-          target: 'https://aj1cerphelpdesk.netlify.app',
+          target: 'http://localhost:8888', // Use local Netlify Dev server
           changeOrigin: true,
           secure: false,
         },

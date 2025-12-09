@@ -10,16 +10,6 @@ export const analyzeTicketImages = async (
   context: string,
   isCreationMode: boolean = false
 ): Promise<string> => {
-  // Mock for localhost development
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    console.log("Mocking AI Analysis for Localhost");
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve(`**Mock Analysis (Localhost):**\n\nBased on the screenshot provided, I can see an error dialog related to "${context}".\n\n**Potential Issues:**\n1. Data inconsistency in the invoice record.\n2. Network timeout during the posting process.\n\n**Suggested Actions:**\n- Verify the invoice details against the PO.\n- Check the browser console for network errors.`);
-      }, 2000);
-    });
-  }
-
   try {
     const response = await fetch('/.netlify/functions/analyze', {
       method: 'POST',
@@ -54,47 +44,116 @@ export const analyzeTicketImages = async (
   }
 };
 
-export const analyzeTicketVideo = async (
-  videoBase64: string,
-  mimeType: string,
-  erpName?: string,
-  module?: string
-): Promise<string> => {
-  try {
-    const response = await fetch('/.netlify/functions/analyze-video', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        videoBase64,
-        mimeType,
-        erpName,
-        module
-      }),
-    });
+import { supabase } from './supabaseClient';
 
-    const responseText = await response.text();
-    let data;
+export async function analyzeTicketVideoBackground(videoUrl: string, erpName: string, module: string, accessToken?: string): Promise<any> {
+  console.log("Analyzing Video (Background Mode)...", videoUrl);
+
+  // 1. Determine Backend URL
+  const isSplitDev = window.location.port === '3009';
+  const FUNCTION_URL = isSplitDev
+    ? 'http://127.0.0.1:8888/.netlify/functions/analyze-video-background'
+    : '/.netlify/functions/analyze-video-background';
+
+  console.log(`Targeting Backend: ${FUNCTION_URL}`);
+
+  // 2. Trigger Background Function
+  const analysisId = `vid-${Date.now()}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  let response;
+  try {
+    response = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl,
+        erpName,
+        module,
+        accessToken,
+        analysisId
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+  } catch (networkError: any) {
+    clearTimeout(timeoutId);
+    console.error("Network Error contacting backend:", networkError);
+    const msg = networkError.name === 'AbortError' ? 'Connection Timed Out' : networkError.message;
+    throw new Error(`Connection Failed: ${msg}. Is backend running on port 8888?`);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown Server Error");
+    throw new Error(`Failed to start background analysis: ${response.status} ${errorText}`);
+  }
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("text/html")) {
+    throw new Error("Configuration Error: Backend URL is incorrect (Received HTML instead of JSON). check console.");
+  }
+
+  console.log(`Background job started (ID: ${analysisId}). Polling for result...`);
+
+  // 2. Poll for Result (Max 15 minutes = 900 seconds)
+  const POLL_INTERVAL = 3000;
+  const MAX_ATTEMPTS = 300; // 15 mins
+  let consecutiveErrors = 0;
+
+  // Determine Proxy URL
+  const PROXY_URL = isSplitDev
+    ? 'http://127.0.0.1:8888/.netlify/functions/get-analysis-result'
+    : '/.netlify/functions/get-analysis-result';
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
 
     try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      // If parsing fails, it's likely an HTML error page (e.g. 413 Payload Too Large, 500, 404)
-      console.error("Failed to parse video analysis response:", responseText);
-      throw new Error(`Server returned an error (likely file too large or timeout): ${response.status} ${response.statusText}`);
-    }
+      // Use Proxy Function to Fetch Result (Bypasses RLS in Dev)
+      const res = await fetch(`${PROXY_URL}?analysisId=${analysisId}`);
 
-    if (!response.ok) {
-      throw new Error(data.error || `Server error: ${response.status}`);
-    }
+      if (res.status === 200) {
+        const data = await res.json();
+        console.log("Analysis Result Found via Proxy!", data);
+        return data;
+      }
 
-    return data.text;
-  } catch (error: any) {
-    console.error("AI Video Analysis Error:", error);
-    return `Failed to analyze the video. ${error.message || 'Please try again later.'}`;
+      if (res.status === 422) {
+        // 422 indicates the *Error File* was found (Analysis Failed Remotely)
+        const errorData = await res.json();
+        console.error("Analysis Failed Remote:", errorData);
+        throw new Error(errorData.error || "Background analysis reported failure");
+      }
+
+      if (res.status === 404) {
+        // Still processing...
+        if (i % 5 === 0) console.log(`Polling... (${i + 1}/${MAX_ATTEMPTS}) - Status: Pending`);
+        consecutiveErrors = 0;
+        continue;
+      }
+
+      // Other errors
+      console.warn(`Polling status: ${res.status}`);
+      consecutiveErrors++;
+
+    } catch (e: any) {
+      console.warn("Polling network error:", e);
+      consecutiveErrors++;
+      if (consecutiveErrors > 10) throw e;
+    }
   }
-};
+
+  throw new Error("Analysis timed out (polling limit reached)");
+}
+
+export async function analyzeTicketVideo(videoFile: File, erpName: string, module: string): Promise<any> {
+  // Legacy Sync Function (Kept for reference, but App.tsx will switch to background)
+  console.warn("Using Legacy Sync Video Analysis - deprecated");
+  // ...
+  throw new Error("Use background analysis");
+}
 
 export const generateExecutiveSummary = async (tickets: any[]): Promise<string> => {
   try {

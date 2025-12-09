@@ -30,6 +30,14 @@ interface TicketDetailViewProps {
     onSelectTicket: (id: string) => void; // For navigating to related tickets
 }
 
+// Helper for timeouts to prevent infinte loading state
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
+    ]);
+}
+
 export const TicketDetailView = (props: TicketDetailViewProps) => {
     const {
         ticket,
@@ -109,41 +117,51 @@ export const TicketDetailView = (props: TicketDetailViewProps) => {
 
     if (!ticket) return <div>Ticket not found</div>;
 
+
+
     const handlePostComment = async () => {
         if (!commentText.trim() && commentFiles.length === 0) return;
         if (!currentUser) return;
 
         setIsSubmitting(true);
         try {
-            // 1. Upload files to Storage (for DB)
+            // 1. Upload files to Storage (for DB) - with 30s timeout
             const uploadedAttachments: Attachment[] = await Promise.all(commentFiles.map(async (file) => {
-                console.log('Starting upload for:', file.name);
-                const path = await StorageService.uploadFile(file);
-                console.log('Upload result path:', path);
 
-                if (!path) {
-                    console.error('Upload failed (path is null) for file:', file.name);
-                    throw new Error(`Failed to upload file: ${file.name}`);
+
+                try {
+                    const uploadPromise = StorageService.uploadFile(file);
+                    const path = await withTimeout(uploadPromise, 30000, `Upload timed out for ${file.name}`);
+
+
+
+                    if (!path) {
+                        console.error('Upload failed (path is null) for file:', file.name);
+                        throw new Error(`Failed to upload file: ${file.name}`);
+                    }
+                    const url = StorageService.getPublicUrl(path);
+
+                    return {
+                        id: `ca${Date.now()}-${Math.random()}`,
+                        name: file.name,
+                        type: file.type.startsWith('image') ? 'image' : 'document',
+                        url: url,
+                        storagePath: path || undefined,
+                        mimeType: file.type
+                    };
+                } catch (err: any) {
+                    console.error("Single file upload failed:", err);
+                    throw err; // Re-throw to fail the whole comment posting
                 }
-                const url = StorageService.getPublicUrl(path);
-                console.log('File uploaded, URL:', url);
-                return {
-                    id: `ca${Date.now()}-${Math.random()}`,
-                    name: file.name,
-                    type: file.type.startsWith('image') ? 'image' : 'document',
-                    url: url,
-                    storagePath: path || undefined,
-                    mimeType: file.type
-                };
             }));
 
-            // 2. Read files to Base64 (for AI Analysis only)
+            // 2. Read files to Base64 (for AI Analysis only) - with 10s timeout
             const aiAttachments: Attachment[] = await Promise.all(commentFiles.map(async (file) => {
-                return new Promise<Attachment>((resolve) => {
+                const readPromise = new Promise<Attachment>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onloadend = () => {
                         resolve({
-                            id: `temp-${Date.now()}`, // ID doesn't matter for AI
+                            id: `temp-${Date.now()}`,
                             name: file.name,
                             type: file.type.startsWith('image') ? 'image' : 'document',
                             url: reader.result as string,
@@ -151,8 +169,11 @@ export const TicketDetailView = (props: TicketDetailViewProps) => {
                             mimeType: file.type
                         });
                     };
+                    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
                     reader.readAsDataURL(file);
                 });
+
+                return withTimeout(readPromise, 10000, `Reading file ${file.name} timed out`);
             }));
 
             const commentId = `c${Date.now()}`;
@@ -745,87 +766,106 @@ export const TicketDetailView = (props: TicketDetailViewProps) => {
                         )}
                     </div>
 
-                    {/* Comment Input */}
-                    <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 rounded-b-2xl">
-                        {/* Selected Files Preview */}
-                        {commentFiles.length > 0 && (
-                            <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-                                {commentFiles.map((file, i) => (
-                                    <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-600 group">
-                                        {file.type.startsWith('image') ? (
-                                            <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="prev" />
-                                        ) : <div className="w-full h-full bg-gray-50 flex items-center justify-center"><FileText className="h-5 w-5 text-gray-400" /></div>}
-                                        <button onClick={() => setCommentFiles(prev => prev.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <X className="h-3 w-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {/* Comment Input Area */}
-                        <div className="flex items-end space-x-2 bg-gray-50 dark:bg-slate-900 p-2 rounded-2xl border border-gray-200 dark:border-slate-600 focus-within:border-brand-400 dark:focus-within:border-brand-500 focus-within:bg-white dark:focus-within:bg-slate-900 transition-all duration-200">
-                            <input
-                                type="file"
-                                multiple
-                                ref={fileInputRef}
-                                className="hidden"
-                                onChange={e => {
-                                    if (e.target.files && e.target.files.length > 0) {
-                                        setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-                                        e.target.value = ''; // Reset input to allow re-selecting same file
-                                    }
-                                }}
-                                accept="image/*, .pdf"
-                            />
-                            <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                                <Paperclip className="h-5 w-5" />
-                            </button>
-                            <div className="flex-1">
-                                <textarea
-                                    className="w-full bg-transparent border-none focus:ring-0 text-sm resize-none py-2 max-h-32 text-gray-900 dark:text-white"
-                                    placeholder="Type a comment..."
-                                    rows={1}
-                                    value={commentText}
-                                    onChange={e => setCommentText(e.target.value)}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handlePostComment();
+                    {/* Comment Input - Only Logic for Comments Tab */}
+                    {activeTab === 'comments' && (
+                        <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 rounded-b-2xl">
+                            {/* Selected Files Preview */}
+                            {commentFiles.length > 0 && (
+                                <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+                                    {commentFiles.map((file, i) => (
+                                        <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-600 group">
+                                            {file.type.startsWith('image') ? (
+                                                <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="prev" />
+                                            ) : <div className="w-full h-full bg-gray-50 flex items-center justify-center"><FileText className="h-5 w-5 text-gray-400" /></div>}
+                                            <button onClick={() => setCommentFiles(prev => prev.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {/* Comment Input Area */}
+                            <div className={`flex items-end space-x-2 bg-gray-50 dark:bg-slate-900 p-2 rounded-2xl border border-gray-200 dark:border-slate-600 focus-within:border-brand-400 dark:focus-within:border-brand-500 focus-within:bg-white dark:focus-within:bg-slate-900 transition-all duration-200 ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}>
+                                <input
+                                    type="file"
+                                    multiple
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    disabled={isSubmitting}
+                                    onChange={e => {
+                                        const files = e.target.files;
+                                        if (files && files.length > 0) {
+                                            const newFiles = Array.from(files);
+                                            setCommentFiles(prev => [...prev, ...newFiles]);
+                                            // Reset value asynchronously to ensure event processing is done
+                                            setTimeout(() => {
+                                                if (fileInputRef.current) {
+                                                    fileInputRef.current.value = '';
+                                                }
+                                            }, 0);
                                         }
                                     }}
+                                    accept="image/*, .pdf"
                                 />
-                                {/* Auto-Analyze Toggle */}
-                                {commentFiles.some(f => f.type.startsWith('image')) && (
-                                    <div className="flex items-center mt-1 mb-1">
-                                        <input
-                                            type="checkbox"
-                                            id="autoAnalyze"
-                                            checked={isAutoAnalyzeEnabled}
-                                            onChange={(e) => setIsAutoAnalyzeEnabled(e.target.checked)}
-                                            className="h-3 w-3 text-brand-600 focus:ring-brand-500 border-gray-300 rounded"
-                                        />
-                                        <label htmlFor="autoAnalyze" className="ml-2 block text-xs text-gray-500 dark:text-gray-400 flex items-center cursor-pointer">
-                                            <Sparkles className="h-3 w-3 mr-1 text-indigo-500" />
-                                            Analyze images with AI
-                                        </label>
-                                    </div>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.preventDefault(); // Extra safety
+                                        fileInputRef.current?.click();
+                                    }}
+                                    disabled={isSubmitting}
+                                    className="p-2 text-gray-400 hover:text-brand-600 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Paperclip className="h-5 w-5" />
+                                </button>
+                                <div className="flex-1">
+                                    <textarea
+                                        className="w-full bg-transparent border-none focus:ring-0 text-sm resize-none py-2 max-h-32 text-gray-900 dark:text-white disabled:text-gray-400 disabled:cursor-wait"
+                                        placeholder={isSubmitting ? "Posting comment..." : "Type a comment..."}
+                                        rows={1}
+                                        disabled={isSubmitting}
+                                        value={commentText}
+                                        onChange={e => setCommentText(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handlePostComment();
+                                            }
+                                        }}
+                                    />
+                                    {/* Auto-Analyze Toggle */}
+                                    {commentFiles.some(f => f.type.startsWith('image')) && (
+                                        <div className="flex items-center mt-1 mb-1">
+                                            <input
+                                                type="checkbox"
+                                                id="autoAnalyze"
+                                                checked={isAutoAnalyzeEnabled}
+                                                onChange={(e) => setIsAutoAnalyzeEnabled(e.target.checked)}
+                                                className="h-3 w-3 text-brand-600 focus:ring-brand-500 border-gray-300 rounded"
+                                            />
+                                            <label htmlFor="autoAnalyze" className="ml-2 block text-xs text-gray-500 dark:text-gray-400 flex items-center cursor-pointer">
+                                                <Sparkles className="h-3 w-3 mr-1 text-indigo-500" />
+                                                Analyze images with AI
+                                            </label>
+                                        </div>
+                                    )}
+                                </div>
+                                <motion.button
+                                    onClick={handlePostComment}
+                                    disabled={(!commentText.trim() && commentFiles.length === 0) || isSubmitting}
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    className="p-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {isSubmitting ? (
+                                        <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <ArrowRight className="h-5 w-5" />
+                                    )}
+                                </motion.button>
                             </div>
-                            <motion.button
-                                onClick={handlePostComment}
-                                disabled={(!commentText.trim() && commentFiles.length === 0) || isSubmitting}
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                className="p-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isSubmitting ? (
-                                    <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                    <ArrowRight className="h-5 w-5" />
-                                )}
-                            </motion.button>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 

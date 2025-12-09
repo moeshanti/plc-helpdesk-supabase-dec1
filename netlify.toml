@@ -3,3 +3,7 @@
 
 [dev]
   targetPort = 3000
+
+[functions]
+  [functions.analyze-video]
+    timeout = 26
