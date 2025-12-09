@@ -142,6 +142,7 @@ export interface Notification {
 
 export interface AppSettings {
   appName: string;
+  tagline?: string;
   logoUrl: string | null;
   supportEmail: string;
   primaryColor: string;

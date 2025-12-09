@@ -1333,6 +1333,7 @@ export default function App() {
                         <BrandLogo
                             logoUrl={appSettings?.logoUrl}
                             name={appSettings?.appName || "PLC HelpDesk"}
+                            tagline={appSettings?.tagline}
                             isCollapsed={!isSidebarOpen}
                             className="text-white"
                         />

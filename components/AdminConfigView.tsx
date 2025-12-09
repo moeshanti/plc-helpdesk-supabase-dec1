@@ -171,6 +171,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
     // --- Branding Logic ---
     const [branding, setBranding] = useState({
         appName: 'PLC HelpDesk',
+        tagline: '',
         supportEmail: '',
         logoUrl: null as string | null
     });
@@ -189,6 +190,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
             const settings = await StorageService.fetchAppSettings();
             setBranding({
                 appName: settings.appName,
+                tagline: settings.tagline || '',
                 supportEmail: settings.supportEmail,
                 logoUrl: settings.logoUrl
             });
@@ -203,11 +205,17 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
         setIsSavingBranding(true);
         setShowSaveSuccess(false);
         try {
-            await StorageService.updateAppSettings({
+            const success = await StorageService.updateAppSettings({
                 appName: branding.appName,
+                tagline: branding.tagline,
                 supportEmail: branding.supportEmail,
                 logoUrl: branding.logoUrl
             });
+
+            if (!success) {
+                throw new Error("Failed to save settings to server. Please check your permissions.");
+            }
+
             // Force refresh of app level settings
             onUpdate();
 
@@ -339,6 +347,17 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                                 </div>
 
                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tagline (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={branding.tagline || ''}
+                                        onChange={e => setBranding(prev => ({ ...prev, tagline: e.target.value }))}
+                                        className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        placeholder="e.g. ERP System v2.0"
+                                    />
+                                </div>
+
+                                <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Support Email</label>
                                     <input
                                         type="email"
@@ -372,8 +391,8 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onClose, initi
                                         onClick={handleBrandingSave}
                                         disabled={isSavingBranding || showSaveSuccess}
                                         className={`w-full sm:w-auto px-6 py-2.5 font-bold rounded-lg shadow-md disabled:opacity-50 transition-all flex items-center justify-center ${showSaveSuccess
-                                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                                            : 'bg-blue-600 hover:bg-blue-700 text-white'
                                             }`}
                                     >
                                         {isSavingBranding ? (

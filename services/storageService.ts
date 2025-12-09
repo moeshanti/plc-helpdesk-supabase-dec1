@@ -746,6 +746,7 @@ export const StorageService = {
     // Merge: DB > Local > Default
     return {
       appName: data.app_name || localSettings.appName || defaultSettings.appName,
+      tagline: data.tagline || localSettings.tagline,
       logoUrl: data.logo_url || localSettings.logoUrl || defaultSettings.logoUrl,
       supportEmail: data.support_email || localSettings.supportEmail || defaultSettings.supportEmail,
       primaryColor: data.primary_color || localSettings.primaryColor || defaultSettings.primaryColor
@@ -758,6 +759,7 @@ export const StorageService = {
     // Check if row exists, if not insert, else update (id=1 is standard singleton pattern for settings)
     const dbSettings: any = {};
     if (settings.appName !== undefined) dbSettings.app_name = settings.appName;
+    if (settings.tagline !== undefined) dbSettings.tagline = settings.tagline;
     if (settings.logoUrl !== undefined) dbSettings.logo_url = settings.logoUrl;
     if (settings.supportEmail !== undefined) dbSettings.support_email = settings.supportEmail;
     if (settings.primaryColor !== undefined) dbSettings.primary_color = settings.primaryColor;
@@ -779,9 +781,9 @@ export const StorageService = {
       .upsert({ id: 1, ...dbSettings }, { onConflict: 'id' });
 
     if (error) {
-      console.error('Error updating/upserting app settings (using local fallback):', error);
-      // Return true because we saved to localStorage at least
-      return true;
+      console.error('Error updating/upserting app settings:', error);
+      // Return false so UI knows DB sync failed
+      return false;
     }
 
     return true;
