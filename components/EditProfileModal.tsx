@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 import { StorageService } from '../services/storageService';
-import { X, Check, Loader2, UserCircle, Upload } from 'lucide-react';
+import { X, Check, Loader2, UserCircle, Upload, Shield } from 'lucide-react';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -12,19 +12,52 @@ interface EditProfileModalProps {
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, user, onUpdate }) => {
     const [name, setName] = useState(user.name);
-    const [email, setEmail] = useState(user.email); // Usually email is immutable in simple setups, but let's allow basic edit or at least display
+    const [email, setEmail] = useState(user.email);
+    const [role, setRole] = useState<UserRole>(user.role);
     const [avatarUrl, setAvatarUrl] = useState(user.avatar || '');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Dynamic Avatar Generation Helper
+    const generateAvatarUrl = (userName: string, userRole: UserRole) => {
+        const encodedName = encodeURIComponent(userName || 'User');
+        let bg = '64748b'; // Default Slate
+
+        switch (userRole) {
+            case UserRole.ADMIN: bg = '0284c7'; break; // Blue
+            case UserRole.DEVELOPER: bg = '7c3aed'; break; // Purple
+            case UserRole.REPORTER: bg = 'ea580c'; break; // Orange
+            default: bg = '64748b';
+        }
+
+        return `https://ui-avatars.com/api/?name=${encodedName}&background=${bg}&color=fff`;
+    };
 
     useEffect(() => {
         if (isOpen) {
             setName(user.name);
             setEmail(user.email);
+            setRole(user.role);
             setAvatarUrl(user.avatar || '');
             setError(null);
         }
     }, [isOpen, user]);
+
+    // Auto-update avatar if it's a default UI Avatar and name/role changes
+    useEffect(() => {
+        if (!isOpen) return;
+
+        // Check if current avatar is empty or is a generated one (ui-avatars.com)
+        const isGenerated = !avatarUrl || avatarUrl.includes('ui-avatars.com');
+
+        if (isGenerated && name) {
+            const newAvatar = generateAvatarUrl(name, role);
+            // Only update if it's actually different to avoid cycles, though React prevents that mostly
+            if (newAvatar !== avatarUrl) {
+                setAvatarUrl(newAvatar);
+            }
+        }
+    }, [name, role, isOpen]); // removed avatarUrl from dependency to prevent loop if we were careless, but logic is safe
 
     if (!isOpen) return null;
 
@@ -38,7 +71,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         setError(null);
 
         try {
-            const updates = { name, email, avatar: avatarUrl };
+            const updates = { name, email, role, avatar: avatarUrl };
             const success = await StorageService.updateUserProfile(user.id, updates);
 
             if (success) {
@@ -127,6 +160,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                         />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
+                        <div className="relative">
+                            <select
+                                value={role}
+                                onChange={(e) => setRole(e.target.value as UserRole)}
+                                className="w-full p-3 pl-10 border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
+                            >
+                                {Object.values(UserRole).map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                ))}
+                            </select>
+                            <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        </div>
                     </div>
                 </div>
 

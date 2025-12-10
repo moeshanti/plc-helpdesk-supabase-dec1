@@ -4,7 +4,7 @@ import { Ticket, User, StatusConfig, ModuleConfig, SlaConfig, TicketPriority, Us
 import { StatusBadge } from './StatusBadge'; // Assuming this exists or is exported
 import { PriorityBadge } from './PriorityBadge'; // Need to check if this exists
 import { SlaTimer } from './SlaTimer';
-import { X, Search } from 'lucide-react';
+import { X, Search, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface TicketListViewProps {
@@ -110,6 +110,69 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                         <X className="h-3 w-3 mr-1" /> Clear Filters
                     </motion.button>
                 )}
+
+                <motion.button
+                    onClick={() => {
+                        // Export CSV Logic
+                        const headers = ['ID', 'Subject', 'Description', 'Steps to Reproduce', 'Status', 'Priority', 'Module', 'SLA Status', 'Assignee', 'Reporter', 'Created At'];
+                        const csvContent = [
+                            headers.join(','),
+                            ...tickets.map(t => {
+                                const assigneeName = users.find(u => u.id === t.assigneeId)?.name || 'Unassigned';
+                                const reporterName = users.find(u => u.id === t.reporterId)?.name || 'Unknown';
+
+                                // SLA Calculation
+                                let slaText = 'N/A';
+                                if (t.status !== 'Resolved' && t.status !== 'Closed' && t.status !== 'Partially Closed') {
+                                    const slaConfig = masterData.slas.find(s => s.priority === t.priority);
+                                    if (slaConfig) {
+                                        const createdTime = new Date(t.createdAt).getTime();
+                                        const resolutionTimeMs = slaConfig.resolution_hours * 60 * 60 * 1000;
+                                        const targetTime = createdTime + resolutionTimeMs;
+                                        const now = Date.now();
+                                        const timeRemaining = targetTime - now;
+                                        const absMs = Math.abs(timeRemaining);
+                                        const hours = Math.floor(absMs / (1000 * 60 * 60));
+                                        const minutes = Math.floor((absMs % (1000 * 60 * 60)) / (1000 * 60));
+                                        const durationStr = hours > 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h ${minutes}m`;
+
+                                        slaText = timeRemaining < 0 ? `Overdue by ${durationStr}` : `${durationStr} left`;
+                                    }
+                                } else {
+                                    slaText = 'Completed';
+                                }
+
+                                // Escape fields that might contain commas
+                                const escape = (str: string) => `"${(str || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+
+                                return [
+                                    escape(t.number),
+                                    escape(t.title),
+                                    escape(t.description),
+                                    escape(t.stepsToReproduce),
+                                    escape(t.status),
+                                    escape(t.priority),
+                                    escape(t.module),
+                                    escape(slaText),
+                                    escape(assigneeName),
+                                    escape(reporterName),
+                                    escape(new Date(t.createdAt).toLocaleDateString())
+                                ].join(',');
+                            })
+                        ].join('\n');
+
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `tickets_export_${new Date().toISOString().split('T')[0]}.csv`;
+                        link.click();
+                    }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`ml-3 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-slate-700 dark:text-indigo-300 text-sm font-medium flex items-center border border-indigo-200 dark:border-slate-600 transition-colors ${(filters.status || filters.priority || filters.module || filters.assignee) ? '' : 'ml-auto'}`}
+                >
+                    <Download className="h-4 w-4 mr-2" /> Export CSV
+                </motion.button>
             </div>
 
             <div className="overflow-x-auto">

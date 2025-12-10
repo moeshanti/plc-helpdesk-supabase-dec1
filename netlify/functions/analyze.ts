@@ -25,11 +25,12 @@ const handler: Handler = async (event) => {
             promptText += `
         The user is currently attempting to create a ticket.
         
-        Extract ONLY valid JSON with the following fields:
+        Extract ONLY valid JSON with the following fields (RETURN A SINGLE OBJECT, NOT AN ARRAY):
         { 
             "title": "A concise, professional ticket subject line based on the images", 
             "steps": "Deduce probable steps to reproduce this error based on the screen context (e.g. 1. Open 'Sales Order'. 2. Click 'Post'.). Keep it concise.", 
-            "description": "Provide a friendly, concise analysis of the error for the user here. If it's a common error like 'Period Closed', suggest a fix."
+            "description": "Provide a friendly, concise analysis of the error for the user here. If it's a common error like 'Period Closed', suggest a fix.",
+            "module": "The most likely ERP module for this invalid (e.g. Finance, Sales, Inventory, Manufacturing, System)"
         }`;
         } else {
             promptText += `

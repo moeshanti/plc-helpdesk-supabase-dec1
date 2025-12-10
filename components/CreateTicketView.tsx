@@ -282,9 +282,25 @@ export const CreateTicketView: React.FC<CreateTicketViewProps> = ({
                 }
             })));
 
-            const result = await analyzeTicketImages(imageParts, ACTIVE_ERP_SYSTEM, "System", true); // Force isCreationMode=true
+            const context = `${ACTIVE_ERP_SYSTEM} (Module: System)`;
+            const result = await analyzeTicketImages(imageParts, context, true); // Corrected signature
+            console.log("DEBUG: Raw AI Response from Backend:", result);
 
-            let { title, description, steps, module } = JSON.parse(result);
+            let parsedResult;
+            try {
+                parsedResult = JSON.parse(result);
+                // Handle Array Response (Robustness Fix)
+                if (Array.isArray(parsedResult)) {
+                    console.warn("DEBUG: AI returned array, using first item.");
+                    parsedResult = parsedResult[0] || {};
+                }
+                console.log("DEBUG: Parsed JSON:", parsedResult);
+            } catch (e) {
+                console.error("DEBUG: Failed to parse result as JSON:", result);
+                parsedResult = {};
+            }
+
+            let { title, description, steps, module } = parsedResult;
 
             // Self-Healing Parsing Logic
             if (!steps && description) {

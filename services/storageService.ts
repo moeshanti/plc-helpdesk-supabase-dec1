@@ -266,7 +266,7 @@ export const StorageService = {
     }
     const { data, error } = await supabase
       .from('tickets')
-      .select('id, number, title, module, status, priority, reporter_id, assignee_id, created_at, updated_at, satisfaction_rating')
+      .select('id, number, title, description, steps_to_reproduce, module, status, priority, reporter_id, assignee_id, created_at, updated_at, satisfaction_rating, ai_analysis')
       .order('created_at', { ascending: false });
 
     if (error) {

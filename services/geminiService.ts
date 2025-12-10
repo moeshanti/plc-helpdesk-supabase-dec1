@@ -5,6 +5,8 @@ export interface ImagePart {
   }
 }
 
+// Helper to determine the correct function URL based on environment
+
 export const analyzeTicketImages = async (
   images: ImagePart[],
   context: string,
