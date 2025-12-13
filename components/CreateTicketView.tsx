@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Plus,
     X,
+    Upload,
     Bot,
     Sparkles,
     Wand2,
     UploadCloud,
     Video,
+    Paperclip,
     AlertTriangle,
     Loader2,
     Lightbulb,
@@ -76,6 +78,7 @@ export const CreateTicketView: React.FC<CreateTicketViewProps> = ({
     const [suggestedModule, setSuggestedModule] = useState<string | null>(null);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [analysisStatus, setAnalysisStatus] = useState<string>("Analyzing...");
+    const [creationMode, setCreationMode] = useState<'ai' | 'manual'>('ai');
 
     // UI Feedback state
     const [applyStatus, setApplyStatus] = useState({
@@ -83,6 +86,13 @@ export const CreateTicketView: React.FC<CreateTicketViewProps> = ({
         steps: false,
         description: false
     });
+
+    const [uploadedAnalysisVideoPath, setUploadedAnalysisVideoPath] = useState<string | null>(null);
+
+    // Reset uploaded path if user changes the file
+    useEffect(() => {
+        setUploadedAnalysisVideoPath(null);
+    }, [videoFile]);
 
     const isStaff = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER;
 
@@ -95,12 +105,13 @@ export const CreateTicketView: React.FC<CreateTicketViewProps> = ({
         setSuggestedSteps(null);
         setSuggestedModule(null);
         setApplyStatus({ title: false, steps: false, description: false });
+        setUploadedAnalysisVideoPath(null); // Also clear precise path on hard reset
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             resetAnalysisState(); // Clear previous analysis
-            if (activeTab === 'image') {
+            if (activeTab === 'image' || creationMode === 'manual') {
                 const newFiles = Array.from(e.target.files);
                 setFiles(prev => [...prev, ...newFiles]);
             } else if (activeTab === 'upload-video') {
@@ -194,6 +205,8 @@ export const CreateTicketView: React.FC<CreateTicketViewProps> = ({
                 );
 
                 if (!path) throw new Error("Failed to upload video to storage");
+
+                setUploadedAnalysisVideoPath(path); // Save path to avoid re-upload
 
                 // Get Public URL
                 const videoUrl = StorageService.getPublicUrl(path);
@@ -386,7 +399,7 @@ ${analysisObj.description || 'N/A'}
             const attachments: Attachment[] = [];
 
             // Handle Image Files
-            if (activeTab === 'image' && files.length > 0) {
+            if ((creationMode === 'manual' || activeTab === 'image') && files.length > 0) {
                 const imageAttachments = await Promise.all(files.map(async (file) => {
                     const path = await StorageService.uploadFile(file);
                     const url = path ? StorageService.getPublicUrl(path) : '';
@@ -403,14 +416,19 @@ ${analysisObj.description || 'N/A'}
                 attachments.push(...imageAttachments);
             }
 
-            // Handle Uploaded Video
-            if (activeTab === 'upload-video' && videoFile) {
+            // Handle Uploaded Video (or Recorded Video in Preview)
+            if ((creationMode === 'manual' || activeTab === 'upload-video' || videoFile) && videoFile) {
                 try {
-                    const path = await withTimeout(
-                        StorageService.uploadFile(videoFile),
-                        120000,
-                        "Video upload timed out (120s). Please check your connection."
-                    );
+                    let path = uploadedAnalysisVideoPath;
+
+                    if (!path) {
+                        path = await withTimeout(
+                            StorageService.uploadFile(videoFile),
+                            120000,
+                            "Video upload timed out (120s). Please check your connection."
+                        );
+                    }
+
                     const url = path ? StorageService.getPublicUrl(path) : '';
 
                     attachments.push({
@@ -430,7 +448,7 @@ ${analysisObj.description || 'N/A'}
             }
 
             // Handle Recorded Video
-            if (activeTab === 'record-video' && recordedVideoBlob) {
+            if ((creationMode === 'manual' || activeTab === 'record-video') && recordedVideoBlob) {
                 try {
                     const file = new File([recordedVideoBlob], `Screen Recording ${new Date().toLocaleString()}.webm`, { type: 'video/webm' });
                     const path = await withTimeout(
@@ -502,206 +520,360 @@ ${analysisObj.description || 'N/A'}
                 </button>
             </div>
 
+            {/* Mode Switcher */}
+            <div className="flex p-1 bg-gray-100 dark:bg-slate-700 rounded-xl mb-8 w-fit mx-auto md:mx-0">
+                <button
+                    onClick={() => {
+                        setCreationMode('ai');
+                        setActiveTab('image'); // Reset to default
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all ${creationMode === 'ai'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Smart Assistant
+                </button>
+                <button
+                    onClick={() => setCreationMode('manual')}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all ${creationMode === 'manual'
+                        ? 'bg-gray-800 dark:bg-slate-600 text-white shadow-md'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                >
+                    <ListOrdered className="w-4 h-4 mr-2" />
+                    Manual Entry
+                </button>
+            </div>
+
             {/* Smart Start Hero Section */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 shadow-xl text-white relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-1/4 -translate-y-1/4">
-                    <Bot className="w-64 h-64" />
-                </div>
+            {creationMode === 'ai' && (
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 shadow-xl text-white relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-1/4 -translate-y-1/4">
+                        <Bot className="w-64 h-64" />
+                    </div>
 
-                <div className="relative z-10">
-                    <h3 className="text-3xl font-bold mb-2 flex items-center">
-                        <Sparkles className="w-8 h-8 mr-3 text-yellow-300" /> Smart Assistant
-                    </h3>
-                    <p className="text-indigo-100 text-lg mb-8 max-w-xl">
-                        Upload a screenshot or video of your 1C error. Our AI will analyze the problem, suggest a title, and detect steps to reproduce instantly.
-                    </p>
+                    <div className="relative z-10">
+                        <h3 className="text-3xl font-bold mb-2 flex items-center">
+                            <Sparkles className="w-8 h-8 mr-3 text-yellow-300" /> Smart Assistant
+                        </h3>
+                        <p className="text-indigo-100 text-lg mb-8 max-w-xl">
+                            Upload a screenshot or video of your 1C error. Our AI will analyze the problem, suggest a title, and detect steps to reproduce instantly.
+                        </p>
 
-                    <SmartInputTabs activeTab={activeTab} onTabChange={handleTabChangeWrapper} />
+                        <SmartInputTabs activeTab={activeTab} onTabChange={handleTabChangeWrapper} />
 
-                    <div className="flex flex-col md:flex-row gap-4 items-start">
-                        <div className="flex-1 w-full">
-                            {activeTab === 'image' && (
-                                <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
+                        <div className="flex flex-col md:flex-row gap-4 items-start">
+                            <div className="flex-1 w-full">
+                                {activeTab === 'image' && (
+                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
                                 ${files.length > 0 ? 'bg-white/10 border-white/40' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
                             `}>
-                                    {files.length > 0 ? (
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
-                                            {files.map((file, i) => (
-                                                <div key={i} className="relative aspect-video rounded-lg overflow-hidden border border-white/20 group/file">
-                                                    <img src={URL.createObjectURL(file)} alt="prev" className="w-full h-full object-cover" />
-                                                    <button onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setFiles(prev => {
-                                                            const newFiles = prev.filter((_, idx) => idx !== i);
-                                                            if (newFiles.length === 0) resetAnalysisState();
-                                                            return newFiles;
-                                                        });
-                                                    }} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity">
-                                                        <X className="w-3 h-3" />
-                                                    </button>
+                                        {files.length > 0 ? (
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                                                {files.map((file, i) => (
+                                                    <div key={i} className="relative aspect-video rounded-lg overflow-hidden border border-white/20 group/file">
+                                                        <img src={URL.createObjectURL(file)} alt="prev" className="w-full h-full object-cover" />
+                                                        <button onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setFiles(prev => {
+                                                                const newFiles = prev.filter((_, idx) => idx !== i);
+                                                                if (newFiles.length === 0) resetAnalysisState();
+                                                                return newFiles;
+                                                            });
+                                                        }} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity">
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <div className="flex flex-col items-center justify-center aspect-video rounded-lg border-2 border-dashed border-white/30 text-white/50 text-xs">
+                                                    <Wand2 className="h-4 w-4 mr-2" /> Add More
                                                 </div>
-                                            ))}
-                                            <div className="flex flex-col items-center justify-center aspect-video rounded-lg border-2 border-dashed border-white/30 text-white/50 text-xs">
-                                                <Wand2 className="h-4 w-4 mr-2" /> Add More
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <UploadCloud className="h-12 w-12 text-white/70 mb-3" />
-                                            <span className="text-lg font-bold text-white">Drop screenshots here</span>
-                                            <span className="text-sm text-indigo-200 mt-1">or click to browse</span>
-                                        </>
-                                    )}
-                                    <input type="file" multiple onChange={handleFileChange} className="hidden" accept="image/*" />
-                                </label>
-                            )}
+                                        ) : (
+                                            <>
+                                                <UploadCloud className="h-12 w-12 text-white/70 mb-3" />
+                                                <span className="text-lg font-bold text-white">Drop screenshots here</span>
+                                                <span className="text-sm text-indigo-200 mt-1">or click to browse</span>
+                                            </>
+                                        )}
+                                        <input type="file" multiple onChange={handleFileChange} className="hidden" accept="image/*" />
+                                    </label>
+                                )}
 
-                            {activeTab === 'upload-video' && (
-                                <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300 relative
+                                {activeTab === 'upload-video' && (
+                                    <label className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300 relative
                                 ${videoFile ? 'bg-white/10 border-white/40' : uploadError ? 'bg-red-500/10 border-red-400' : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/50'}
                             `}>
-                                    {videoFile ? (
-                                        <div className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden group/file">
-                                            <video src={URL.createObjectURL(videoFile)} className="w-full h-full object-contain" controls />
-                                            <button onClick={(e) => {
-                                                e.preventDefault();
-                                                setVideoFile(null);
-                                                resetAnalysisState();
-                                            }} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity z-10">
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className={`h-12 w-12 rounded-full flex items-center justify-center mb-3 ${uploadError ? 'bg-red-500/20' : 'bg-white/10'}`}>
-                                                {uploadError ? <AlertTriangle className="h-6 w-6 text-red-300" /> : <Video className="h-6 w-6 text-white" />}
+                                        {videoFile ? (
+                                            <div className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden group/file">
+                                                <video src={URL.createObjectURL(videoFile)} className="w-full h-full object-contain" controls />
+                                                <button onClick={(e) => {
+                                                    e.preventDefault();
+                                                    setVideoFile(null);
+                                                    resetAnalysisState();
+                                                }} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded opacity-0 group-hover/file:opacity-100 transition-opacity z-10">
+                                                    <X className="w-4 h-4" />
+                                                </button>
                                             </div>
-                                            <span className={`text-lg font-bold ${uploadError ? 'text-red-300' : 'text-white'}`}>
-                                                {uploadError || "Drop video file here"}
-                                            </span>
-                                            <span className={`text-sm mt-1 px-4 text-center ${uploadError ? 'text-red-200' : 'text-indigo-200'}`}>
-                                                {uploadError ? (
-                                                    <>
-                                                        Please choose a smaller file.
-                                                        <br />
-                                                        <span className="inline-block mt-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-colors cursor-pointer" onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            setUploadError(null);
-                                                            e.currentTarget.closest('label')?.querySelector('input')?.click();
-                                                        }}>
-                                                            Select another file
-                                                        </span>
-                                                    </>
-                                                ) : "Max size: 100MB"}
-                                            </span>
-                                        </>
-                                    )}
-                                    <input type="file" onChange={handleFileChange} className="hidden" accept="video/*" />
-                                </label>
-                            )}
-
-                            {activeTab === 'record-video' && (
-                                <ReactMediaRecorder
-                                    screen
-                                    render={({ status, startRecording, stopRecording, mediaBlobUrl, previewStream }) => {
-                                        if (mediaBlobUrl && status === 'stopped') {
-                                            // Convert blob URL to File object for upload
-                                            fetch(mediaBlobUrl).then(r => r.blob()).then(blob => {
-                                                const file = new File([blob], "recorded-video.mp4", { type: "video/mp4" });
-                                                setVideoFile(file);
-                                            });
-                                        }
-
-                                        return (
-                                            <div className="flex flex-col items-center justify-center space-y-4">
-                                                {status === 'recording' ? (
-                                                    <div className="flex flex-col items-center justify-center p-8 space-y-4">
-                                                        <div className="relative">
-                                                            <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
-                                                            <div className="absolute top-0 left-0 w-4 h-4 rounded-full bg-red-500 animate-ping opacity-75"></div>
-                                                        </div>
-                                                        <p className="text-white/70 font-medium animate-pulse">Recording...</p>
-                                                    </div>
-                                                ) : mediaBlobUrl ? (
-                                                    <video src={mediaBlobUrl} controls className="w-full max-w-md rounded-2xl border border-white/20 shadow-2xl" />
-                                                ) : null}
-
-                                                <div className="flex flex-col items-center">
-                                                    <div className="flex items-center space-x-4">
-                                                        {status !== 'recording' && !mediaBlobUrl && (
-                                                            <button
-                                                                onClick={startRecording}
-                                                                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-red-500/25 flex items-center"
-                                                            >
-                                                                <Video className="w-5 h-5 mr-2" /> Start Recording
-                                                            </button>
-                                                        )}
-                                                        {status === 'recording' && (
-                                                            <button
-                                                                onClick={stopRecording}
-                                                                className="px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold transition-all border border-gray-700 flex items-center"
-                                                            >
-                                                                <div className="w-4 h-4 bg-red-500 rounded-sm mr-2"></div> Stop Recording
-                                                            </button>
-                                                        )}
-                                                        {status === 'stopped' && mediaBlobUrl && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleAnalyze(mediaBlobUrl)}
-                                                                    disabled={isAnalyzing}
-                                                                    className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center ${isAnalyzing ? 'bg-white/80 text-indigo-400 cursor-wait' : 'bg-white hover:bg-white/90 text-indigo-600 hover:shadow-white/25'}`}
-                                                                >
-                                                                    {isAnalyzing ? (
-                                                                        <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</>
-                                                                    ) : (
-                                                                        <><Sparkles className="w-5 h-5 mr-2" /> Analyze Recording</>
-                                                                    )}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setVideoFile(null);
-                                                                        resetAnalysisState();
-                                                                    }}
-                                                                    className="text-sm text-white/50 hover:text-white underline transition-colors px-4 py-3"
-                                                                >
-                                                                    Record Again
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    {status !== 'recording' && !mediaBlobUrl && (
-                                                        <p className="text-white/30 text-xs mt-4">Grant camera/mic permissions</p>
-                                                    )}
+                                        ) : (
+                                            <>
+                                                <div className={`h-12 w-12 rounded-full flex items-center justify-center mb-3 ${uploadError ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                                                    {uploadError ? <AlertTriangle className="h-6 w-6 text-red-300" /> : <Video className="h-6 w-6 text-white" />}
                                                 </div>
-                                            </div>
-                                        );
-                                    }}
-                                />
+                                                <span className={`text-lg font-bold ${uploadError ? 'text-red-300' : 'text-white'}`}>
+                                                    {uploadError || "Drop video file here"}
+                                                </span>
+                                                <span className={`text-sm mt-1 px-4 text-center ${uploadError ? 'text-red-200' : 'text-indigo-200'}`}>
+                                                    {uploadError ? (
+                                                        <>
+                                                            Please choose a smaller file.
+                                                            <br />
+                                                            <span className="inline-block mt-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-colors cursor-pointer" onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                setUploadError(null);
+                                                                e.currentTarget.closest('label')?.querySelector('input')?.click();
+                                                            }}>
+                                                                Select another file
+                                                            </span>
+                                                        </>
+                                                    ) : "Max size: 100MB"}
+                                                </span>
+                                            </>
+                                        )}
+                                        <input type="file" onChange={handleFileChange} className="hidden" accept="video/*" />
+                                    </label>
+                                )}
+
+                                {activeTab === 'record-video' && (
+                                    <ReactMediaRecorder
+                                        screen
+                                        render={({ status, startRecording, stopRecording, mediaBlobUrl, previewStream }) => {
+                                            if (mediaBlobUrl && status === 'stopped') {
+                                                // Convert blob URL to File object for upload
+                                                fetch(mediaBlobUrl).then(r => r.blob()).then(blob => {
+                                                    const file = new File([blob], "recorded-video.mp4", { type: "video/mp4" });
+                                                    setVideoFile(file);
+                                                });
+                                            }
+
+                                            return (
+                                                <div className="flex flex-col items-center justify-center space-y-4">
+                                                    {status === 'recording' ? (
+                                                        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                                                            <div className="relative">
+                                                                <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
+                                                                <div className="absolute top-0 left-0 w-4 h-4 rounded-full bg-red-500 animate-ping opacity-75"></div>
+                                                            </div>
+                                                            <p className="text-white/70 font-medium animate-pulse">Recording...</p>
+                                                        </div>
+                                                    ) : mediaBlobUrl ? (
+                                                        <video src={mediaBlobUrl} controls className="w-full max-w-md rounded-2xl border border-white/20 shadow-2xl" />
+                                                    ) : null}
+
+                                                    <div className="flex flex-col items-center">
+                                                        <div className="flex items-center space-x-4">
+                                                            {status !== 'recording' && !mediaBlobUrl && (
+                                                                <button
+                                                                    onClick={startRecording}
+                                                                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-red-500/25 flex items-center"
+                                                                >
+                                                                    <Video className="w-5 h-5 mr-2" /> Start Recording
+                                                                </button>
+                                                            )}
+                                                            {status === 'recording' && (
+                                                                <button
+                                                                    onClick={stopRecording}
+                                                                    className="px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold transition-all border border-gray-700 flex items-center"
+                                                                >
+                                                                    <div className="w-4 h-4 bg-red-500 rounded-sm mr-2"></div> Stop Recording
+                                                                </button>
+                                                            )}
+                                                            {status === 'stopped' && mediaBlobUrl && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => handleAnalyze(mediaBlobUrl)}
+                                                                        disabled={isAnalyzing}
+                                                                        className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center ${isAnalyzing ? 'bg-white/80 text-indigo-400 cursor-wait' : 'bg-white hover:bg-white/90 text-indigo-600 hover:shadow-white/25'}`}
+                                                                    >
+                                                                        {isAnalyzing ? (
+                                                                            <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing...</>
+                                                                        ) : (
+                                                                            <><Sparkles className="w-5 h-5 mr-2" /> Analyze Recording</>
+                                                                        )}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setVideoFile(null);
+                                                                            resetAnalysisState();
+                                                                        }}
+                                                                        className="text-sm text-white/50 hover:text-white underline transition-colors px-4 py-3"
+                                                                    >
+                                                                        Record Again
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        {status !== 'recording' && !mediaBlobUrl && (
+                                                            <p className="text-white/30 text-xs mt-4">Grant camera/mic permissions</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                )}
+                            </div>
+
+                            {activeTab !== 'record-video' && (
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => handleAnalyze()}
+                                    disabled={isAnalyzing || (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)}
+                                    className={`px-8 py-6 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center transition-all w-full md:min-w-[300px] md:w-auto
+                                ${isAnalyzing
+                                            ? 'bg-white/20 text-white cursor-wait'
+                                            : (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)
+                                                ? 'bg-white/10 text-white/40 cursor-not-allowed'
+                                                : 'bg-white text-indigo-600 hover:bg-indigo-50 transform hover:-translate-y-1'
+                                        }
+                            `}
+                                >
+                                    {isAnalyzing ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {analysisStatus}</> : 'Analyze Now'}
+                                </motion.button>
                             )}
                         </div>
-
-                        {activeTab !== 'record-video' && (
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleAnalyze()}
-                                disabled={isAnalyzing || (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)}
-                                className={`px-8 py-6 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center transition-all w-full md:min-w-[300px] md:w-auto
-                                ${isAnalyzing
-                                        ? 'bg-white/20 text-white cursor-wait'
-                                        : (activeTab === 'image' && files.length === 0) || (activeTab === 'upload-video' && !videoFile)
-                                            ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                                            : 'bg-white text-indigo-600 hover:bg-indigo-50 transform hover:-translate-y-1'
-                                    }
-                            `}
-                            >
-                                {isAnalyzing ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {analysisStatus}</> : 'Analyze Now'}
-                            </motion.button>
-                        )}
                     </div>
                 </div>
-            </div>
+            )}
+
+            {/* Manual Entry Uploader */}
+            {creationMode === 'manual' && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center mb-4">
+                        <Paperclip className="w-4 h-4 mr-2" /> Attachments
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {/* Image Upload */}
+                        <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-slate-700/50 transition-all group">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Upload className="w-8 h-8 text-gray-400 group-hover:text-indigo-500 mb-2 transition-colors" />
+                                <p className="text-xs font-bold text-gray-500 group-hover:text-indigo-600 dark:text-gray-400">Add Images</p>
+                                <p className="text-[10px] text-gray-400">PNG, JPG</p>
+                            </div>
+                            <input type="file" className="hidden" multiple accept="image/*" onChange={(e) => handleFileChange(e, 'image')} />
+                        </label>
+
+                        {/* Video Upload */}
+                        <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-slate-700/50 transition-all group">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Video className="w-8 h-8 text-gray-400 group-hover:text-purple-500 mb-2 transition-colors" />
+                                <p className="text-xs font-bold text-gray-500 group-hover:text-purple-600 dark:text-gray-400">Add Video</p>
+                                <p className="text-[10px] text-gray-400">MP4, WebM (Max 100MB)</p>
+                            </div>
+                            <input
+                                type="file"
+                                className="hidden"
+                                accept="video/*"
+                                onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                        setVideoFile(e.target.files[0]);
+                                    }
+                                }}
+                            />
+                        </label>
+
+                        {/* Record Screen */}
+                        <button
+                            onClick={() => setActiveTab('record-video')}
+                            className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-red-500 hover:bg-red-50 dark:hover:bg-slate-700/50 transition-all group"
+                        >
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <div className="w-8 h-8 rounded-full border-2 border-gray-400 group-hover:border-red-500 flex items-center justify-center mb-2 transition-colors">
+                                    <div className="w-3 h-3 bg-gray-400 group-hover:bg-red-500 rounded-full transition-colors" />
+                                </div>
+                                <p className="text-xs font-bold text-gray-500 group-hover:text-red-600 dark:text-gray-400">Record Screen</p>
+                                <p className="text-[10px] text-gray-400">No AI Analysis</p>
+                            </div>
+                        </button>
+                    </div>
+
+                    {/* Preview Area */}
+                    {(files.length > 0 || videoFile || activeTab === 'record-video') && (
+                        <div className="space-y-4">
+                            {/* Images */}
+                            {files.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {files.map((file, index) => (
+                                        <div key={index} className="relative group w-20 h-20">
+                                            <img src={URL.createObjectURL(file)} alt="Preview" className="w-full h-full object-cover rounded-lg border border-gray-200" />
+                                            <button
+                                                onClick={() => setFiles(files.filter((_, i) => i !== index))}
+                                                className="absolute -top-2 -right-2 bg-white text-red-500 rounded-full p-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Video Recording UI (Re-used) */}
+                            {activeTab === 'record-video' && (
+                                <div className="bg-gray-900 rounded-xl p-4 flex flex-col items-center">
+                                    <ReactMediaRecorder
+                                        screen
+                                        onStop={(blobUrl, blob) => {
+                                            const file = new File([blob], "recorded-video.mp4", { type: "video/mp4" });
+                                            setVideoFile(file);
+                                            setActiveTab('image'); // Switch back to show preview
+                                        }}
+                                        render={({ status, startRecording, stopRecording, mediaBlobUrl, previewStream }) => (
+                                            <div className="w-full flex flex-col items-center space-y-4">
+                                                {status === 'recording' ? (
+                                                    <div className="flex flex-col items-center animate-pulse">
+                                                        <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-2">
+                                                            <div className="w-3 h-3 bg-red-500 rounded-full" />
+                                                        </div>
+                                                        <p className="text-white text-sm font-medium">Recording...</p>
+                                                        <button onClick={stopRecording} className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold">Stop Recording</button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center">
+                                                        <p className="text-gray-400 text-sm mb-4">Click below to start recording your screen</p>
+                                                        <button onClick={startRecording} className="px-6 py-2 bg-white text-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">Start Recording</button>
+                                                    </div>
+                                                )}
+                                                {/* Live Preview Stream */}
+                                                {previewStream && status === 'recording' && (
+                                                    <video ref={(ref) => { if (ref) ref.srcObject = previewStream }} autoPlay muted className="w-full max-w-sm rounded-lg border border-gray-700 mt-4" />
+                                                )}
+                                            </div>
+                                        )}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Uploaded/Recorded Video Preview */}
+                            {videoFile && activeTab !== 'record-video' && (
+                                <div className="relative bg-black rounded-lg overflow-hidden group max-w-sm">
+                                    <VideoPreview file={videoFile} />
+                                    <button
+                                        onClick={() => setVideoFile(null)}
+                                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* AI Suggestions Grid - Appears after analysis */}
             {aiAnalysis && (
@@ -878,4 +1050,21 @@ ${analysisObj.description || 'N/A'}
             </div>
         </div>
     );
+};
+
+const VideoPreview = ({ file }: { file: File }) => {
+    const [url, setUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!file) {
+            setUrl(null);
+            return;
+        }
+        const objectUrl = URL.createObjectURL(file);
+        setUrl(objectUrl);
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [file]);
+
+    if (!url) return null;
+    return <video src={url} controls className="w-full" />;
 };
